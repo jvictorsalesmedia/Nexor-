@@ -315,9 +315,9 @@
     }
 
     .sidebar {
-      position: sticky;
-      top: 0;
-      height: 100vh;
+      position: relative;
+      top: auto;
+      height: auto;
       display: flex;
       flex-direction: column;
       border-right: 1px solid var(--line);
@@ -1091,9 +1091,9 @@
 
     .cinema-copy h2 {
       margin: 0 0 18px;
-      font-size: clamp(2.25rem, 5.4vw, 4.95rem);
-      line-height: 0.96;
-      font-weight: 300;
+      font-size: clamp(1.85rem, 4.2vw, 3.35rem);
+      line-height: 1.04;
+      font-weight: 360;
       letter-spacing: 0;
     }
 
@@ -1209,8 +1209,8 @@
 
     .habit-title h2 {
       margin: 0;
-      font-weight: 340;
-      font-size: clamp(1.5rem, 3vw, 2.8rem);
+      font-weight: 400;
+      font-size: clamp(1.35rem, 2.5vw, 2.15rem);
     }
 
     .habit-days-head,
@@ -1377,9 +1377,9 @@
     .finance-hero h2 {
       margin: 8px auto 12px;
       max-width: 680px;
-      font-size: clamp(2.2rem, 5vw, 4.3rem);
-      line-height: 0.98;
-      font-weight: 300;
+      font-size: clamp(1.8rem, 4vw, 3.15rem);
+      line-height: 1.04;
+      font-weight: 360;
     }
 
     .finance-hero strong {
@@ -1409,6 +1409,16 @@
     }
 
     body {
+      --logo-max-height: 160px;
+      --logo-opacity: 1;
+      --logo-y: 0px;
+      --logo-scale: 1;
+      --header-pad-top: 18px;
+      --header-pad-bottom: 10px;
+      --header-gap: 8px;
+      --header-bg-alpha: 0.86;
+      --header-line-alpha: 0.075;
+      --header-blur: 22px;
       background: #000;
     }
 
@@ -1421,30 +1431,35 @@
     }
 
     .sidebar {
-      position: sticky;
-      top: 0;
-      z-index: 30;
+      position: relative;
+      top: auto;
+      z-index: 1;
       height: auto;
       min-height: 0;
       display: grid;
       place-items: center;
-      gap: 12px;
-      padding: 26px 18px 14px;
+      gap: var(--header-gap);
+      padding: var(--header-pad-top) 18px var(--header-pad-bottom);
       overflow: visible;
       border-right: 0;
-      border-bottom: 1px solid rgba(255,255,255,0.075);
-      background: rgba(0,0,0,0.86);
-      backdrop-filter: blur(22px);
+      border-bottom: 1px solid rgba(255,255,255,var(--header-line-alpha));
+      background: rgba(0,0,0,var(--header-bg-alpha));
+      backdrop-filter: blur(var(--header-blur));
     }
 
     .brand {
       justify-content: center;
       padding: 0;
       border-bottom: 0;
+      max-height: var(--logo-max-height);
+      opacity: var(--logo-opacity);
+      overflow: hidden;
+      transform-origin: top center;
+      transform: translateY(var(--logo-y)) scale(var(--logo-scale));
     }
 
     .brand-mark {
-      width: min(245px, 58vw);
+      width: min(190px, 48vw);
       height: auto;
       border-radius: 0;
     }
@@ -1452,8 +1467,8 @@
     .brand-mark img {
       width: 100%;
       height: auto;
-      filter: drop-shadow(0 0 30px rgba(255,255,255,0.18));
-      animation: logoFloat 6s ease-in-out infinite, logoFocus 4.8s ease-in-out infinite;
+      filter: drop-shadow(0 0 22px rgba(255,255,255,0.14));
+      animation: none;
     }
 
     .brand > div:last-child {
@@ -1461,14 +1476,7 @@
     }
 
     .nav {
-      width: min(1120px, 100%);
-      display: flex;
-      justify-content: center;
-      gap: 8px;
-      margin: 0;
-      padding: 2px 0 4px;
-      overflow-x: auto;
-      scrollbar-width: thin;
+      display: none;
     }
 
     .nav button {
@@ -1493,19 +1501,31 @@
     }
 
     .sidebar-footer {
-      width: min(1120px, 100%);
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 55;
+      width: auto;
       display: flex;
       justify-content: center;
       align-items: center;
       gap: 10px;
       margin: 0;
-      padding: 0;
-      border-top: 0;
+      padding: 6px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px;
+      background: rgba(0,0,0,0.66);
+      backdrop-filter: blur(18px);
     }
 
     .user-pill {
       min-width: 0;
       grid-template-columns: 32px minmax(0, auto);
+    }
+
+    .user-pill strong,
+    .user-pill span {
+      max-width: 160px;
     }
 
     .avatar {
@@ -1514,9 +1534,9 @@
     }
 
     .content {
-      width: min(1160px, calc(100% - 32px));
+      width: min(1080px, calc(100% - 32px));
       margin: 0 auto;
-      padding: 18px 0 56px;
+      padding: 0 0 72px;
     }
 
     .topbar {
@@ -1542,19 +1562,39 @@
       backdrop-filter: blur(18px);
     }
 
+    .topbar-actions .btn {
+      flex: 0 0 auto;
+    }
+
+    #topTaskBtn {
+      width: 40px;
+      padding: 0;
+      font-size: 0;
+      gap: 0;
+    }
+
     .module-head {
       position: relative;
       display: grid;
       grid-template-columns: 1fr;
       justify-items: center;
       text-align: center;
-      gap: 18px;
-      margin: 12px 0 30px;
-      padding: 42px 18px 28px;
+      gap: 16px;
+      margin: 0 0 24px;
+      padding: 30px 18px 16px;
       overflow: hidden;
       border: 0;
       background: transparent;
       box-shadow: none;
+    }
+
+    .module-head.is-compact {
+      justify-items: stretch;
+      text-align: left;
+      gap: 12px;
+      margin-bottom: 18px;
+      padding: 14px 8px 8px;
+      overflow: visible;
     }
 
     .module-head::before {
@@ -1569,26 +1609,55 @@
       mask-image: linear-gradient(180deg, black, transparent 78%);
     }
 
+    .module-head.is-compact::before {
+      opacity: 0.38;
+      mask-image: linear-gradient(180deg, black, transparent 58%);
+    }
+
     .module-title {
       position: relative;
       z-index: 1;
-      max-width: 760px;
+      max-width: 680px;
+    }
+
+    .module-head.is-compact .module-title {
+      width: min(1080px, 100%);
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+
+    .module-head.is-hero .module-title {
+      text-align: center;
     }
 
     .module-title h1 {
-      font-size: clamp(2.65rem, 7vw, 5.15rem);
-      line-height: 0.92;
-      font-weight: 500;
-      margin: 0 0 18px;
+      font-size: clamp(2rem, 4.6vw, 3.55rem);
+      line-height: 1.04;
+      font-weight: 430;
+      margin: 0 0 12px;
       color: #f8f8f3;
     }
 
+    .module-head.is-compact .module-title h1 {
+      font-size: clamp(1.28rem, 2.2vw, 1.82rem);
+      line-height: 1.18;
+      font-weight: 650;
+      margin-bottom: 6px;
+    }
+
     .module-title p {
-      max-width: 650px;
+      max-width: 560px;
       margin: 0 auto;
-      font-size: clamp(0.95rem, 2vw, 1.08rem);
-      line-height: 1.65;
-      color: rgba(255,255,255,0.42);
+      font-size: clamp(0.88rem, 1.4vw, 1rem);
+      line-height: 1.55;
+      color: rgba(255,255,255,0.46);
+    }
+
+    .module-head.is-compact .module-title p {
+      max-width: 640px;
+      margin: 0;
+      font-size: 0.86rem;
+      line-height: 1.45;
     }
 
     .module-head .toolbar {
@@ -1597,50 +1666,182 @@
       justify-content: center;
     }
 
+    .module-head.is-compact .toolbar {
+      width: min(1080px, 100%);
+      margin: 0 auto;
+      justify-content: flex-start;
+    }
+
+    .module-head .toolbar:empty {
+      display: none;
+    }
+
     .app-tabs {
-      width: min(1000px, 100%);
-      margin: -16px auto 28px;
-      display: flex;
-      flex-wrap: wrap;
+      width: min(940px, 100%);
+      position: relative;
+      z-index: 1;
+      margin: 0 auto 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+      align-items: stretch;
       justify-content: center;
       gap: 8px;
     }
 
-    .app-tabs span {
-      min-height: 32px;
-      display: inline-flex;
-      align-items: center;
-      border: 1px solid rgba(255,255,255,0.095);
-      border-radius: 999px;
-      padding: 0 12px;
-      color: rgba(255,255,255,0.62);
-      background: rgba(255,255,255,0.026);
-      font-size: 0.78rem;
+    .module-head.is-compact .app-tabs {
+      width: min(940px, 100%);
+      justify-content: center;
+      margin-bottom: 8px;
     }
+
+    .app-tabs button {
+      --tab-accent: #f4f4f0;
+      min-height: 44px;
+      width: 100%;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: 1px solid color-mix(in srgb, var(--tab-accent) 22%, rgba(255,255,255,0.09));
+      border-radius: 12px;
+      padding: 0 12px;
+      color: rgba(255,255,255,0.82);
+      background:
+        radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--tab-accent) 14%, transparent), transparent 42%),
+        linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.016)),
+        rgba(255,255,255,0.018);
+      font-size: 0.78rem;
+      font-weight: 760;
+      line-height: 1;
+      white-space: nowrap;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.055);
+    }
+
+    .app-tabs button::after {
+      content: "";
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 5px;
+      height: 2px;
+      border-radius: 99px;
+      background: var(--tab-accent);
+      opacity: 0.28;
+      transform: scaleX(0.42);
+      transform-origin: center;
+      transition: opacity 150ms ease, transform 150ms ease;
+    }
+
+    .app-tabs button span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      position: relative;
+      z-index: 1;
+    }
+
+    .app-tabs button {
+      cursor: pointer;
+      transition: transform 150ms ease, border-color 150ms ease, background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+    }
+
+    .app-tabs button.active,
+    .app-tabs button:hover {
+      color: #fff;
+      border-color: color-mix(in srgb, var(--tab-accent) 50%, rgba(255,255,255,0.24));
+      background:
+        radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--tab-accent) 26%, transparent), transparent 48%),
+        linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.032)),
+        rgba(255,255,255,0.018);
+      box-shadow: 0 12px 30px color-mix(in srgb, var(--tab-accent) 10%, transparent), inset 0 0 0 1px rgba(255,255,255,0.06);
+      transform: translateY(-1px);
+    }
+
+    .app-tabs button.active::after,
+    .app-tabs button:hover::after {
+      opacity: 0.86;
+      transform: scaleX(1);
+    }
+
+    .app-tabs svg {
+      width: 19px;
+      height: 19px;
+      flex: 0 0 auto;
+      position: relative;
+      z-index: 1;
+      color: var(--tab-accent);
+      stroke-width: 1.85;
+      opacity: 1;
+      filter: drop-shadow(0 0 8px color-mix(in srgb, var(--tab-accent) 24%, transparent));
+      transition: opacity 150ms ease, filter 150ms ease, transform 150ms ease;
+    }
+
+    .app-tabs button.active svg,
+    .app-tabs button:hover svg {
+      opacity: 1;
+      filter: drop-shadow(0 0 10px rgba(255,255,255,0.22));
+      transform: scale(1.04);
+    }
+
+    .app-tabs button[data-module="dashboard"] { --tab-accent: #ffffff; }
+    .app-tabs button[data-module="tasks"] { --tab-accent: #f0c75e; }
+    .app-tabs button[data-module="projects"] { --tab-accent: #9eb7ff; }
+    .app-tabs button[data-module="kanban"] { --tab-accent: #72d8ff; }
+    .app-tabs button[data-module="planner"] { --tab-accent: #f2f2f2; }
+    .app-tabs button[data-module="eisenhower"] { --tab-accent: #ff7a7a; }
+    .app-tabs button[data-module="clients"] { --tab-accent: #9ee7d6; }
+    .app-tabs button[data-module="production"] { --tab-accent: #ffc16b; }
+    .app-tabs button[data-module="finance"] { --tab-accent: #71e59f; }
+    .app-tabs button[data-module="habits"] { --tab-accent: #b9f27d; }
+    .app-tabs button[data-module="team"] { --tab-accent: #d8d8ff; }
+    .app-tabs button[data-module="reports"] { --tab-accent: #86c5ff; }
+    .app-tabs button[data-module="settings"] { --tab-accent: #d6d6d6; }
 
     .dashboard-stage {
       position: relative;
-      padding: clamp(10px, 2vw, 18px);
-      border: 1px solid rgba(255,255,255,0.085);
-      border-radius: 8px;
-      background:
-        linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018)),
-        #050505;
-      box-shadow: 0 34px 90px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+      width: min(1080px, 100%);
+      margin: 0 auto;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
     }
 
     .dashboard-stage::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      border-radius: inherit;
-      background: radial-gradient(circle at 50% 0%, rgba(255,255,255,0.09), transparent 35%);
+      display: none;
     }
 
     .dashboard-stage > * {
       position: relative;
       z-index: 1;
+    }
+
+    .dashboard-row {
+      margin-top: 14px;
+    }
+
+    .dashboard-priority {
+      min-height: 280px;
+      display: grid;
+      align-content: start;
+    }
+
+    .dashboard-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .dashboard-pulse .bar-chart {
+      margin-top: 12px;
+    }
+
+    .dashboard-compact-list .list-row {
+      padding-block: 9px;
     }
 
     .grid.metrics {
@@ -1658,15 +1859,115 @@
     .habit-console,
     .chart-tooltip,
     dialog {
-      border-color: rgba(255,255,255,0.09);
+      border-color: rgba(255,255,255,0.075);
       background:
-        linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.016)),
-        #050505;
+        linear-gradient(180deg, rgba(255,255,255,0.038), rgba(255,255,255,0.012)),
+        #030303;
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+    }
+
+    .panel:hover,
+    .metric:hover,
+    .item-card:hover,
+    .mini-board:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255,255,255,0.15);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
     }
 
     .metric strong {
       color: #fff;
+    }
+
+    body[data-theme="light"] {
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body[data-theme="light"] .shell {
+      background:
+        radial-gradient(circle at 50% 0%, rgba(0,0,0,0.06), transparent 30%),
+        linear-gradient(180deg, #ffffff 0%, #f3f3f0 52%, #e8e8e3 100%);
+    }
+
+    body[data-theme="light"] .sidebar {
+      border-bottom-color: rgba(0,0,0,0.08);
+      background: rgba(255,255,255,0.88);
+    }
+
+    body[data-theme="light"] .brand-mark img {
+      filter: invert(1) drop-shadow(0 0 18px rgba(0,0,0,0.14));
+    }
+
+    body[data-theme="light"] .topbar-actions,
+    body[data-theme="light"] .sidebar-footer {
+      border-color: rgba(0,0,0,0.1);
+      background: rgba(255,255,255,0.76);
+    }
+
+    body[data-theme="light"] .module-head::before {
+      background:
+        radial-gradient(circle at 50% 12%, rgba(0,0,0,0.08), transparent 34%),
+        linear-gradient(90deg, transparent, rgba(0,0,0,0.045), transparent);
+    }
+
+    body[data-theme="light"] .module-title h1 {
+      color: #080808;
+    }
+
+    body[data-theme="light"] .module-title p {
+      color: rgba(0,0,0,0.56);
+    }
+
+    body[data-theme="light"] .app-tabs button {
+      color: rgba(0,0,0,0.72);
+      border-color: color-mix(in srgb, var(--tab-accent) 28%, rgba(0,0,0,0.12));
+      background:
+        radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--tab-accent) 20%, transparent), transparent 44%),
+        rgba(0,0,0,0.028);
+    }
+
+    body[data-theme="light"] .app-tabs button.active,
+    body[data-theme="light"] .app-tabs button:hover {
+      color: #050505;
+      border-color: color-mix(in srgb, var(--tab-accent) 48%, rgba(0,0,0,0.2));
+      background:
+        radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--tab-accent) 32%, transparent), transparent 48%),
+        linear-gradient(180deg, rgba(0,0,0,0.08), rgba(0,0,0,0.025));
+    }
+
+    body[data-theme="light"] .app-tabs button.active svg,
+    body[data-theme="light"] .app-tabs button:hover svg {
+      filter: drop-shadow(0 0 9px color-mix(in srgb, var(--tab-accent) 36%, rgba(0,0,0,0.13)));
+    }
+
+    body[data-theme="light"] .panel,
+    body[data-theme="light"] .metric,
+    body[data-theme="light"] .item-card,
+    body[data-theme="light"] .kanban-column,
+    body[data-theme="light"] .day-column,
+    body[data-theme="light"] .quadrant,
+    body[data-theme="light"] .mini-board,
+    body[data-theme="light"] .finance-card,
+    body[data-theme="light"] .habit-console,
+    body[data-theme="light"] .chart-tooltip,
+    body[data-theme="light"] dialog {
+      border-color: rgba(0,0,0,0.11);
+      background:
+        linear-gradient(180deg, rgba(0,0,0,0.028), rgba(0,0,0,0.01)),
+        #ffffff;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.85), 0 12px 30px rgba(10,10,10,0.035);
+    }
+
+    body[data-theme="light"] .metric strong {
+      color: #050505;
+    }
+
+    body[data-theme="light"] .progress,
+    body[data-theme="light"] .habit-progress,
+    body[data-theme="light"] .mini-timeline {
+      background: rgba(0,0,0,0.055);
+      border-color: rgba(0,0,0,0.1);
     }
 
     @media (max-width: 1180px) {
@@ -1750,6 +2051,13 @@
         grid-template-columns: none;
         max-width: calc(100vw - 20px);
         overflow-x: auto;
+      }
+
+      .app-tabs,
+      .module-head.is-compact .app-tabs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        justify-content: center;
+        gap: 10px;
       }
 
       .bar-row {
@@ -2210,15 +2518,36 @@
     }
 
     function moduleHead(title, subtitle, actions = "") {
+      const headClass = activeModule === "dashboard" ? "is-hero" : "is-compact";
       return `
-        <div class="module-head">
+        <div class="module-head ${headClass}">
           <div class="module-title">
             <h1>${title}</h1>
             <p>${subtitle}</p>
           </div>
+          ${moduleTabs()}
           <div class="toolbar">${actions}</div>
         </div>
       `;
+    }
+
+    function moduleTabs() {
+      return `
+        <div class="app-tabs">
+          ${modules.filter(([id]) => canAccess(id)).map(([id, label, iconName]) => `<button type="button" class="${activeModule === id ? "active" : ""}" data-module="${id}">${icon(iconName)}<span>${tabLabel(label)}</span></button>`).join("")}
+        </div>
+      `;
+    }
+
+    function tabLabel(label) {
+      return {
+        "Dashboard geral": "Dashboard",
+        "Planner semanal": "Agenda",
+        "Matriz de Eisenhower": "Matriz",
+        "Hábitos / rotina": "Hábitos",
+        "Equipe / funcionários": "Equipe",
+        "Configurações": "Ajustes"
+      }[label] || label;
     }
 
     function metric(label, value, note, iconName, tone = "") {
@@ -2235,36 +2564,46 @@
       const pending = visibleTasks().filter(task => task.status !== "Concluído" && task.status !== "Cancelado");
       const done = visibleTasks().filter(task => task.status === "Concluído");
       const activeProjects = db.projects.filter(project => !["Finalizado", "Cancelado"].includes(project.status));
-      const dueSoon = pending.filter(task => task.dueDate && task.dueDate <= addDays(7)).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+      const late = pending.filter(task => task.dueDate && task.dueDate < today()).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+      const dueSoon = pending.filter(task => task.dueDate && task.dueDate >= today() && task.dueDate <= addDays(7)).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+      const todayName = currentWeekday();
+      const todayQueue = pending
+        .filter(task => task.dueDate === today() || (task.weekday || "Segunda") === todayName)
+        .sort((a, b) => `${a.dueDate || "9999-99-99"} ${a.time || "99:99"}`.localeCompare(`${b.dueDate || "9999-99-99"} ${b.time || "99:99"}`));
+      const focusQueue = (todayQueue.length ? todayQueue : dueSoon).slice(0, 6);
       const revenue = monthFinance("Receita");
       const expense = monthFinance("Despesa");
       const balance = revenue - expense;
+      const habitDone = db.habits.filter(habit => isHabitDoneOn(habit, today())).length;
+      const habitTotal = db.habits.length;
       return `
-        ${moduleHead("Tudo organizado em um só lugar", "Tarefas, projetos, agenda, hábitos e financeiro com estética premium.", quickActions())}
-        <div class="app-tabs">
-          ${["Dashboard", "Tarefas", "Projetos", "Kanban", "Agenda", "Hábitos", "Financeiro", "Relatórios", "Acessos"].map(label => `<span>${label}</span>`).join("")}
-        </div>
+        ${moduleHead("Painel do dia", "Prioridades, agenda, projetos e saldo em uma única leitura.", "")}
         <div class="dashboard-stage">
           <div class="grid metrics">
-            ${metric("Tarefas pendentes", pending.length, `${done.length} concluídas`, "check-square", pending.length ? "gold" : "success")}
-            ${metric("Projetos ativos", activeProjects.length, `${avgProgress()}% de progresso médio`, "folder-kanban", "accent")}
-            ${metric("Receita do mês", money(revenue), `${money(expense)} em despesas`, "wallet", "success")}
-            ${metric("Saldo previsto", money(balance), `${dueSoon.length} prazos próximos`, "bell", balance >= 0 ? "accent" : "danger")}
+            ${metric("Prioridades", pending.length, `${late.length} atrasadas • ${done.length} concluídas`, "check-square", pending.length ? "gold" : "success")}
+            ${metric("Hoje", todayQueue.length, todayName, "calendar-days", todayQueue.length ? "accent" : "success")}
+            ${metric("Hábitos", `${habitDone}/${habitTotal}`, "concluídos hoje", "repeat", habitTotal && habitDone === habitTotal ? "success" : "accent")}
+            ${metric("Saldo previsto", money(balance), `${money(revenue)} receita • ${money(expense)} despesa`, "wallet", balance >= 0 ? "success" : "danger")}
           </div>
-          <div class="grid two" style="margin-top:14px">
-            <div class="panel">
+          <div class="grid two dashboard-row">
+            <section class="panel dashboard-priority">
               <div class="section-title">
-                <h2>Resumo do dia</h2>
+                <h2>Prioridades do dia</h2>
                 <span class="chip accent">${dateText(today())}</span>
               </div>
               <div class="list">
-                ${dueSoon.slice(0, 5).map(taskRow).join("") || emptyInline("Nenhum prazo crítico agora.")}
+                ${focusQueue.map(taskRow).join("") || emptyInline("Nenhuma prioridade para hoje.")}
               </div>
-            </div>
-            <div class="panel">
+              <div class="dashboard-actions">
+                <button class="btn accent" type="button" data-open="task" data-icon="plus">Nova tarefa</button>
+                <button class="btn" type="button" data-module="planner" data-icon="calendar-days">Agenda</button>
+                <button class="btn" type="button" data-module="kanban" data-icon="columns">Kanban</button>
+              </div>
+            </section>
+            <section class="panel dashboard-pulse">
               <div class="section-title">
                 <h2>Pulso da semana</h2>
-                <button class="btn" type="button" data-open="task" data-icon="plus">Criar</button>
+                <span class="chip">${pending.length} abertas</span>
               </div>
               ${minimalLineChart(weeklyProductivity(), "tarefas", weekDays)}
               <div class="bar-chart">
@@ -2274,13 +2613,13 @@
                   return barRow(day, count, max, `${count} tarefa${count === 1 ? "" : "s"}`);
                 }).join("")}
               </div>
-            </div>
+            </section>
           </div>
-          <div class="grid two" style="margin-top:14px">
-            <div class="panel">
-              <div class="section-title"><h2>Projetos em andamento</h2><button class="btn" type="button" data-open="project" data-icon="plus">Projeto</button></div>
+          <div class="grid three dashboard-row">
+            <section class="panel dashboard-compact-list">
+              <div class="section-title"><h2>Projetos críticos</h2><button class="btn" type="button" data-open="project" data-icon="plus">Projeto</button></div>
               <div class="list">
-                ${activeProjects.slice(0, 5).map(project => `
+                ${activeProjects.slice(0, 4).map(project => `
                   <div class="list-row">
                     <div>
                       <strong>${escapeHtml(project.name)}</strong>
@@ -2291,11 +2630,31 @@
                   </div>
                 `).join("") || emptyInline("Nenhum projeto ativo.")}
               </div>
-            </div>
-            <div class="panel">
-              <div class="section-title"><h2>Alertas e histórico</h2><span class="chip gold">${db.activity.length}</span></div>
+            </section>
+            <section class="panel dashboard-compact-list">
+              <div class="section-title"><h2>Rotina de hoje</h2><span class="chip accent">${habitDone}/${habitTotal}</span></div>
               <div class="list">
-                ${alerts().concat(db.activity).slice(0, 6).map(item => `
+                ${db.habits.slice(0, 4).map(habit => {
+                  const progress = Math.min(100, Math.round((Number(habit.streak || 0) / Math.max(1, Number(habit.target || 1))) * 100));
+                  return `
+                    <div class="list-row">
+                      <div>
+                        <strong>${escapeHtml(habit.name)}</strong>
+                        <div class="meta">${escapeHtml(habit.frequency)} • ${habit.days?.join(", ") || "Sem dias"}</div>
+                        <div class="progress" data-chart-tip="${escapeHtml(habit.name)}|${habit.streak || 0} de ${habit.target || 0} dias (${progress}%)" style="--value:${progress}%"><span></span></div>
+                      </div>
+                      <div class="row-actions">
+                        ${isHabitDoneOn(habit, today()) ? checkOnly() : `<button class="btn icon" type="button" title="Concluir hoje" data-toggle-habit="${habit.id}" data-icon="check"></button>`}
+                      </div>
+                    </div>
+                  `;
+                }).join("") || emptyInline("Nenhum hábito programado.")}
+              </div>
+            </section>
+            <section class="panel dashboard-compact-list">
+              <div class="section-title"><h2>Alertas</h2><span class="chip gold">${late.length + dueSoon.length}</span></div>
+              <div class="list">
+                ${late.concat(dueSoon).slice(0, 4).map(taskRow).join("") || alerts().concat(db.activity).slice(0, 4).map(item => `
                   <div class="list-row">
                     <div>
                       <strong>${escapeHtml(item.label)}</strong>
@@ -2304,7 +2663,7 @@
                   </div>
                 `).join("") || emptyInline("Sem alertas.")}
               </div>
-            </div>
+            </section>
           </div>
         </div>
       `;
@@ -3022,6 +3381,10 @@
       return weekDays.map(day => visibleTasks().filter(task => task.weekday === day).length);
     }
 
+    function currentWeekday() {
+      return weekDays[(new Date().getDay() + 6) % 7];
+    }
+
     function minimalLineChart(values, label = "", labels = []) {
       const clean = values.length ? values.map(value => Number(value || 0)) : [0, 0, 0, 0, 0, 0, 0];
       const max = Math.max(1, ...clean);
@@ -3117,6 +3480,12 @@
       $$("[data-set-theme]").forEach(button => button.addEventListener("click", () => setTheme(button.dataset.setTheme)));
       $$("[data-calendar-connect]").forEach(button => button.addEventListener("click", connectGoogleCalendar));
       $$("[data-open-google-calendar]").forEach(button => button.addEventListener("click", openGoogleCalendar));
+      $$("[data-module]").forEach(button => button.addEventListener("click", () => {
+        activeModule = button.dataset.module;
+        $("#globalSearch").value = "";
+        $("#searchResults").classList.add("hidden");
+        renderApp();
+      }));
       $("#profileSettingsForm")?.addEventListener("submit", saveProfileSettings);
       $("#calendarSettingsForm")?.addEventListener("submit", saveCalendarSettings);
       $("#createUserForm")?.addEventListener("submit", createUser);
