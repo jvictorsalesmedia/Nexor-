@@ -1662,7 +1662,7 @@
     const getClientName = id => db.clients.find(client => client.id === id)?.name || "Sem cliente";
     const getProjectName = id => db.projects.find(project => project.id === id)?.name || "Sem projeto";
     const isAdmin = () => currentUser?.role === "admin";
-    const canManage = () => ["admin", "gestor"].includes(currentUser?.role);
+    const canManage = () => Boolean(currentUser);
 
     function icon(name) {
       return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons["settings"]}</svg>`;
@@ -1827,8 +1827,7 @@
     }
 
     function canAccess(moduleId) {
-      if (currentUser.role === "admin" || currentUser.role === "gestor") return true;
-      return collaboratorModules.has(moduleId);
+      return Boolean(currentUser);
     }
 
     function boot() {
@@ -2628,8 +2627,7 @@
     }
 
     function visibleTasks() {
-      if (currentUser.role !== "colaborador") return db.tasks;
-      return db.tasks.filter(task => task.assignee === currentUser.id || !task.assignee);
+      return db.tasks;
     }
 
     function plannerHour(task) {
@@ -2971,7 +2969,7 @@
       const existing = findEntity(entity, id);
       const modalRoot = $("#modalRoot");
       modalRoot.innerHTML = `
-        <dialog open>
+        <dialog>
           <form class="modal" method="dialog" id="entityForm">
             <div class="modal-head">
               <div>
@@ -2980,7 +2978,7 @@
               </div>
               <button class="btn icon" type="button" data-close-modal title="Fechar">×</button>
             </div>
-            ${formFields(entity, existing)}
+            ${formFields(entity, existing || {})}
             <div class="modal-actions">
               <button class="btn" type="button" data-close-modal>Cancelar</button>
               <button class="btn accent" type="submit" data-icon="check">Salvar</button>
@@ -3003,7 +3001,7 @@
       if (!task) return;
       const modalRoot = $("#modalRoot");
       modalRoot.innerHTML = `
-        <dialog open>
+        <dialog>
           <form class="modal" method="dialog" id="taskStatusForm">
             <div class="modal-head">
               <div>
