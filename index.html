@@ -308,6 +308,17 @@
       font-size: 0.9rem;
     }
 
+    .save-notice {
+      margin: 0 0 14px;
+      padding: 10px 12px;
+      border: 1px solid color-mix(in srgb, var(--success) 34%, var(--line));
+      border-radius: 8px;
+      color: var(--success);
+      background: color-mix(in srgb, var(--success) 9%, transparent);
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
     .shell {
       min-height: 100vh;
       display: grid;
@@ -2221,6 +2232,7 @@
     let currentUser = null;
     let db = null;
     let activeModule = "dashboard";
+    let accessNotice = "";
 
     const $ = (selector, root = document) => root.querySelector(selector);
     const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -2292,7 +2304,14 @@
     }
 
     function saveUsers() {
-      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+      try {
+        localStorage.setItem(USERS_KEY, JSON.stringify(users));
+        return true;
+      } catch (error) {
+        console.error(error);
+        alert("Não foi possível salvar os logins neste navegador. Verifique permissões de armazenamento ou espaço disponível.");
+        return false;
+      }
     }
 
     function dbKey(userId) {
@@ -3091,6 +3110,7 @@
             `;
           }).join("") || emptyBlock("Nenhum funcionário cadastrado.")}
         </div>
+        ${isAdmin() ? `<section class="panel" style="margin-top:14px">${userAdminPanel()}</section>` : ""}
       `;
     }
 
@@ -3193,6 +3213,7 @@
           <div class="field"><label>Nível</label><select name="role">${Object.entries(roles).filter(([key]) => key !== "admin").map(([key, label]) => `<option value="${key}">${label}</option>`).join("")}</select></div>
           <div class="wide modal-actions"><button class="btn accent" type="submit" data-icon="plus">Criar login</button></div>
         </form>
+        ${accessNotice ? `<div class="save-notice">${escapeHtml(accessNotice)}</div>` : ""}
         <div class="table-wrap">
           <table>
             <thead><tr><th>Usuário</th><th>Nível</th><th>Status</th><th>Senha</th><th>Último login</th><th>Ações</th></tr></thead>
@@ -4065,15 +4086,20 @@
       event.preventDefault();
       const form = event.currentTarget;
       const formData = new FormData(form);
+      const name = String(formData.get("name") || "").trim();
       const email = String(formData.get("email")).trim().toLowerCase();
       const plainPassword = String(formData.get("password"));
+      if (!name || !email || !plainPassword) {
+        alert("Preencha nome, e-mail e senha para criar o login.");
+        return;
+      }
       if (users.some(user => user.email.toLowerCase() === email)) {
         alert("Este e-mail já existe.");
         return;
       }
       const user = {
         id: uid("user"),
-        name: String(formData.get("name")).trim(),
+        name,
         email,
         passwordHash: await sha256(plainPassword),
         plainPassword,
@@ -4085,8 +4111,16 @@
         lastLogin: ""
       };
       users.push(user);
-      saveUsers();
-      localStorage.setItem(dbKey(user.id), JSON.stringify(createDefaultDb(false)));
+      if (!saveUsers()) {
+        users = users.filter(item => item.id !== user.id);
+        return;
+      }
+      try {
+        localStorage.setItem(dbKey(user.id), JSON.stringify(createDefaultDb(false)));
+      } catch (error) {
+        console.error(error);
+      }
+      accessNotice = `Login criado e salvo: ${user.email}`;
       logActivity(`Login criado: ${user.email}`);
       saveDb();
       form.reset();
