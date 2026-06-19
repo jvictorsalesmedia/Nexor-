@@ -2161,6 +2161,9 @@
     const ADMIN_EMAIL = "jvgsales72@gmail.com";
     const ADMIN_HASH = "74d6ef28510a9611e36fb19d8f7ec28370b84dbca1616e111d2f35b55434a4d9";
     const USERS_KEY = "nexor.users.v1";
+    const USERS_BACKUP_KEY = "nexor.users.backup.v1";
+    const PERSIST_DB_NAME = "nexor.persist.v1";
+    const PERSIST_STORE = "kv";
     const SESSION_KEY = "nexor.session.v1";
     const DB_PREFIX = "nexor.db.v1.";
 
@@ -2281,9 +2284,11 @@
       return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
     }
 
-    function loadUsers() {
-      const stored = localStorage.getItem(USERS_KEY);
-      users = stored ? JSON.parse(stored) : [];
+    async function loadUsers() {
+      const primaryUsers = parseUsersSnapshot(localStorage.getItem(USERS_KEY));
+      const backupUsers = parseUsersSnapshot(localStorage.getItem(USERS_BACKUP_KEY));
+      const indexedUsers = parseUsersSnapshot(await readPersistentValue(USERS_KEY));
+      users = bestUsersSnapshot(primaryUsers, backupUsers, indexedUsers);
       const hasAdmin = users.some(user => user.email === ADMIN_EMAIL);
       if (!hasAdmin) {
         users.unshift({
@@ -2305,12 +2310,99 @@
 
     function saveUsers() {
       try {
-        localStorage.setItem(USERS_KEY, JSON.stringify(users));
+        const payload = JSON.stringify(users);
+        localStorage.setItem(USERS_KEY, payload);
+        localStorage.setItem(USERS_BACKUP_KEY, payload);
+        const saved = localStorage.getItem(USERS_KEY) || localStorage.getItem(USERS_BACKUP_KEY);
+        if (!saved || !parseUsersSnapshot(saved).length) throw new Error("Falha ao verificar usuários salvos.");
+        writePersistentValue(USERS_KEY, payload);
         return true;
       } catch (error) {
         console.error(error);
         alert("Não foi possível salvar os logins neste navegador. Verifique permissões de armazenamento ou espaço disponível.");
         return false;
+      }
+    }
+
+    function parseUsersSnapshot(value) {
+      try {
+        const parsed = value ? JSON.parse(value) : [];
+        return Array.isArray(parsed) ? parsed.filter(user => user && user.email) : [];
+      } catch (error) {
+        console.warn("Snapshot de usuários inválido.", error);
+        return [];
+      }
+    }
+
+    function bestUsersSnapshot(...lists) {
+      const best = lists
+        .filter(Array.isArray)
+        .sort((a, b) => userSnapshotScore(b) - userSnapshotScore(a))[0] || [];
+      const byEmail = new Map();
+      best.forEach(user => byEmail.set(String(user.email || "").toLowerCase(), user));
+      return Array.from(byEmail.values());
+    }
+
+    function userSnapshotScore(list) {
+      const realUsers = list.filter(user => user?.email && user.email !== ADMIN_EMAIL).length;
+      const hasAdmin = list.some(user => user?.email === ADMIN_EMAIL) ? 1 : 0;
+      return realUsers * 10 + hasAdmin + list.length;
+    }
+
+    function openPersistentDb() {
+      return new Promise((resolve, reject) => {
+        if (!("indexedDB" in window)) {
+          reject(new Error("IndexedDB indisponível."));
+          return;
+        }
+        const request = indexedDB.open(PERSIST_DB_NAME, 1);
+        request.onupgradeneeded = () => {
+          const database = request.result;
+          if (!database.objectStoreNames.contains(PERSIST_STORE)) {
+            database.createObjectStore(PERSIST_STORE);
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error("Erro ao abrir IndexedDB."));
+      });
+    }
+
+    async function readPersistentValue(key) {
+      try {
+        const database = await openPersistentDb();
+        return await new Promise((resolve, reject) => {
+          const tx = database.transaction(PERSIST_STORE, "readonly");
+          const store = tx.objectStore(PERSIST_STORE);
+          const request = store.get(key);
+          request.onsuccess = () => resolve(request.result || "");
+          request.onerror = () => reject(request.error || new Error("Erro ao ler backup."));
+          tx.oncomplete = () => database.close();
+          tx.onerror = () => database.close();
+        });
+      } catch (error) {
+        console.warn("Backup persistente indisponível.", error);
+        return "";
+      }
+    }
+
+    async function writePersistentValue(key, value) {
+      try {
+        const database = await openPersistentDb();
+        await new Promise((resolve, reject) => {
+          const tx = database.transaction(PERSIST_STORE, "readwrite");
+          const store = tx.objectStore(PERSIST_STORE);
+          store.put(value, key);
+          tx.oncomplete = () => {
+            database.close();
+            resolve();
+          };
+          tx.onerror = () => {
+            database.close();
+            reject(tx.error || new Error("Erro ao salvar backup."));
+          };
+        });
+      } catch (error) {
+        console.warn("Não foi possível gravar backup persistente.", error);
       }
     }
 
@@ -2381,9 +2473,9 @@
       return date.toISOString().slice(0, 10);
     }
 
-    function loadDb() {
+    async function loadDb() {
       const key = dbKey(currentUser.id);
-      const stored = localStorage.getItem(key);
+      const stored = localStorage.getItem(key) || await readPersistentValue(key);
       if (stored) {
         db = JSON.parse(stored);
       } else {
@@ -2407,7 +2499,9 @@
     }
 
     function saveDb() {
-      localStorage.setItem(dbKey(currentUser.id), JSON.stringify(db));
+      const payload = JSON.stringify(db);
+      localStorage.setItem(dbKey(currentUser.id), payload);
+      writePersistentValue(dbKey(currentUser.id), payload);
       updateNotificationDot();
     }
 
@@ -2420,8 +2514,8 @@
       return Boolean(currentUser);
     }
 
-    function boot() {
-      loadUsers();
+    async function boot() {
+      await loadUsers();
       applyIcons();
       $("#loginForm").addEventListener("submit", handleLogin);
       $("#logoutBtn").addEventListener("click", logout);
@@ -2441,7 +2535,7 @@
       const sessionId = localStorage.getItem(SESSION_KEY);
       if (sessionId) {
         const user = users.find(item => item.id === sessionId && item.status !== "Inativo");
-        if (user) startSession(user);
+        if (user) await startSession(user);
       }
     }
 
@@ -2458,12 +2552,12 @@
       user.lastLogin = today();
       saveUsers();
       localStorage.setItem(SESSION_KEY, user.id);
-      startSession(user);
+      await startSession(user);
     }
 
-    function startSession(user) {
+    async function startSession(user) {
       currentUser = user;
-      loadDb();
+      await loadDb();
       document.body.dataset.theme = db.theme || "light";
       $("#authView").classList.add("hidden");
       $("#appShell").classList.remove("hidden");
@@ -4116,7 +4210,9 @@
         return;
       }
       try {
-        localStorage.setItem(dbKey(user.id), JSON.stringify(createDefaultDb(false)));
+        const userDbPayload = JSON.stringify(createDefaultDb(false));
+        localStorage.setItem(dbKey(user.id), userDbPayload);
+        writePersistentValue(dbKey(user.id), userDbPayload);
       } catch (error) {
         console.error(error);
       }
@@ -4297,7 +4393,10 @@
       $("#notifyDot").classList.toggle("hidden", !hasUnread);
     }
 
-    boot();
+    boot().catch(error => {
+      console.error(error);
+      alert("Não foi possível iniciar o Nexor com os dados salvos. Recarregue a página e tente novamente.");
+    });
   </script>
 </body>
 </html>
