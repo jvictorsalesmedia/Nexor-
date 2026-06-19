@@ -2165,6 +2165,7 @@
     const PERSIST_DB_NAME = "nexor.persist.v1";
     const PERSIST_STORE = "kv";
     const SESSION_KEY = "nexor.session.v1";
+    const CLOUD_SESSION_KEY = "nexor.cloud.session.v1";
     const DB_PREFIX = "nexor.db.v1.";
 
     const statusOptions = ["A fazer", "Em andamento", "Aguardando aprovação", "Revisão", "Concluído", "Cancelado"];
@@ -2236,6 +2237,9 @@
     let db = null;
     let activeModule = "dashboard";
     let accessNotice = "";
+    let cloudConfig = { url: "", anonKey: "" };
+    let cloudSession = null;
+    let cloudWorkspaceRecordId = "";
 
     const $ = (selector, root = document) => root.querySelector(selector);
     const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -2282,6 +2286,145 @@
       const bytes = new TextEncoder().encode(text);
       const digest = await crypto.subtle.digest("SHA-256", bytes);
       return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
+    }
+
+    const cloudEnabled = () => Boolean(cloudConfig.url && cloudConfig.anonKey);
+
+    async function loadCloudConfig() {
+      const saved = parseJson(localStorage.getItem("nexor.cloud.config.v1")) || {};
+      cloudConfig = {
+        url: String(saved.url || "").replace(/\/$/, ""),
+        anonKey: String(saved.anonKey || "")
+      };
+      if (location.protocol === "file:") return;
+      try {
+        const response = await fetch("/api/config", { cache: "no-store" });
+        if (response.ok) {
+          const config = await response.json();
+          cloudConfig = {
+            url: String(config.supabaseUrl || config.url || cloudConfig.url || "").replace(/\/$/, ""),
+            anonKey: String(config.supabaseAnonKey || config.anonKey || cloudConfig.anonKey || "")
+          };
+        }
+      } catch (error) {
+        console.info("Config cloud não encontrada neste ambiente; usando modo local.", error);
+      }
+    }
+
+    function parseJson(value) {
+      try {
+        return value ? JSON.parse(value) : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function cloudHeaders(useAuth = true) {
+      const headers = {
+        apikey: cloudConfig.anonKey,
+        "Content-Type": "application/json"
+      };
+      if (useAuth && cloudSession?.access_token) {
+        headers.Authorization = `Bearer ${cloudSession.access_token}`;
+      }
+      return headers;
+    }
+
+    async function cloudFetch(path, options = {}, useAuth = true) {
+      const response = await fetch(`${cloudConfig.url}${path}`, {
+        ...options,
+        headers: {
+          ...cloudHeaders(useAuth),
+          ...(options.headers || {})
+        }
+      });
+      if (!response.ok) {
+        const message = await response.text().catch(() => "");
+        throw new Error(message || `Erro Supabase ${response.status}`);
+      }
+      if (response.status === 204) return null;
+      return response.json().catch(() => null);
+    }
+
+    async function cloudLogin(email, password) {
+      const session = normalizeCloudSession(await cloudFetch("/auth/v1/token?grant_type=password", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      }, false));
+      cloudSession = session;
+      localStorage.setItem(CLOUD_SESSION_KEY, JSON.stringify(session));
+      return session;
+    }
+
+    function normalizeCloudSession(session) {
+      if (!session) return session;
+      if (!session.expires_at && session.expires_in) {
+        session.expires_at = Math.floor(Date.now() / 1000) + Number(session.expires_in);
+      }
+      return session;
+    }
+
+    async function refreshCloudSession() {
+      if (!cloudEnabled()) return null;
+      const stored = parseJson(localStorage.getItem(CLOUD_SESSION_KEY));
+      if (!stored?.access_token) return null;
+      cloudSession = stored;
+      const expiresAt = Number(stored.expires_at || 0);
+      if (stored.refresh_token && expiresAt && expiresAt * 1000 < Date.now() + 60000) {
+        cloudSession = normalizeCloudSession(await cloudFetch("/auth/v1/token?grant_type=refresh_token", {
+          method: "POST",
+          body: JSON.stringify({ refresh_token: stored.refresh_token })
+        }, false));
+        localStorage.setItem(CLOUD_SESSION_KEY, JSON.stringify(cloudSession));
+      }
+      return cloudSession;
+    }
+
+    async function cloudCurrentProfile() {
+      const authUser = await cloudFetch("/auth/v1/user");
+      const rows = await cloudFetch(`/rest/v1/nexor_profiles?id=eq.${encodeURIComponent(authUser.id)}&select=*`);
+      const profile = rows?.[0] || {};
+      return cloudProfileToUser(profile, authUser);
+    }
+
+    function cloudProfileToUser(profile, authUser = {}) {
+      const email = profile.email || authUser.email || "";
+      return {
+        id: profile.id || authUser.id,
+        name: profile.full_name || authUser.user_metadata?.full_name || email.split("@")[0] || "Usuário",
+        email,
+        gender: profile.gender || authUser.user_metadata?.gender || "neutral",
+        role: profile.app_role || "colaborador",
+        status: profile.status === "inativo" ? "Inativo" : "Ativo",
+        plainPassword: profile.passwordNote || profile.password_note || "",
+        createdAt: profile.created_at ? String(profile.created_at).slice(0, 10) : "",
+        lastLogin: ""
+      };
+    }
+
+    async function loadCloudUsers() {
+      if (!cloudEnabled() || !cloudSession?.access_token) return;
+      const rows = await cloudFetch("/rest/v1/nexor_profiles?select=*&order=created_at.asc");
+      const mapped = (rows || []).map(profile => cloudProfileToUser(profile));
+      if (currentUser?.role === "admin") {
+        try {
+          const notes = await cloudFetch("/rest/v1/nexor_user_password_notes?select=user_id,password_note");
+          const passwords = new Map((notes || []).map(note => [note.user_id, note.password_note || ""]));
+          mapped.forEach(user => {
+            user.plainPassword = passwords.get(user.id) || user.plainPassword || "";
+          });
+        } catch (error) {
+          console.warn("Não foi possível carregar senhas salvas para o admin.", error);
+        }
+      }
+      users = mapped.length ? mapped : [currentUser].filter(Boolean);
+    }
+
+    async function cloudAdminAction(action, payload = {}) {
+      return cloudFetch("/functions/v1/nexor-admin-user", {
+        method: "POST",
+        body: JSON.stringify({ action, ...payload })
+      });
     }
 
     async function loadUsers() {
@@ -2474,6 +2617,10 @@
     }
 
     async function loadDb() {
+      if (cloudEnabled() && cloudSession?.access_token) {
+        await loadCloudDb();
+        return;
+      }
       const key = dbKey(currentUser.id);
       const stored = localStorage.getItem(key) || await readPersistentValue(key);
       if (stored) {
@@ -2499,10 +2646,70 @@
     }
 
     function saveDb() {
+      if (cloudEnabled() && cloudSession?.access_token) {
+        saveCloudDb();
+        updateNotificationDot();
+        return;
+      }
       const payload = JSON.stringify(db);
       localStorage.setItem(dbKey(currentUser.id), payload);
       writePersistentValue(dbKey(currentUser.id), payload);
       updateNotificationDot();
+    }
+
+    async function loadCloudDb() {
+      const rows = await cloudFetch("/rest/v1/nexor_records?record_type=eq.setting&data-%3E%3Ekey=eq.workspace&select=id,data&limit=1");
+      const record = rows?.[0];
+      cloudWorkspaceRecordId = record?.id || "";
+      db = record?.data?.db || createDefaultDb(currentUser.email === ADMIN_EMAIL);
+      ensureDbShape();
+      if (!cloudWorkspaceRecordId) saveCloudDb();
+    }
+
+    async function saveCloudDb() {
+      if (!db || !cloudSession?.access_token) return;
+      const payload = {
+        record_type: "setting",
+        owner_id: currentUser.id,
+        data: {
+          key: "workspace",
+          db
+        }
+      };
+      try {
+        if (cloudWorkspaceRecordId) {
+          await cloudFetch(`/rest/v1/nexor_records?id=eq.${cloudWorkspaceRecordId}`, {
+            method: "PATCH",
+            headers: { Prefer: "return=representation" },
+            body: JSON.stringify({ data: payload.data })
+          });
+        } else {
+          const rows = await cloudFetch("/rest/v1/nexor_records", {
+            method: "POST",
+            headers: { Prefer: "return=representation" },
+            body: JSON.stringify(payload)
+          });
+          cloudWorkspaceRecordId = rows?.[0]?.id || cloudWorkspaceRecordId;
+        }
+      } catch (error) {
+        console.error(error);
+        accessNotice = "Não foi possível sincronizar com o Supabase agora. Confira a conexão e tente novamente.";
+      }
+    }
+
+    function ensureDbShape() {
+      db ||= {};
+      db.tasks ||= [];
+      db.projects ||= [];
+      db.clients ||= [];
+      db.finance ||= [];
+      db.productions ||= [];
+      db.habits ||= [];
+      db.team ||= [];
+      db.activity ||= [];
+      db.calendar ||= { googleClientId: "", connected: false, lastSync: "" };
+      db.theme ||= "dark";
+      db.brandVersion ||= "nexor-motion-v2";
     }
 
     function logActivity(label) {
@@ -2515,6 +2722,7 @@
     }
 
     async function boot() {
+      await loadCloudConfig();
       await loadUsers();
       applyIcons();
       $("#loginForm").addEventListener("submit", handleLogin);
@@ -2533,6 +2741,23 @@
         if (!event.target.closest(".search-wrap")) $("#searchResults").classList.add("hidden");
       });
       const sessionId = localStorage.getItem(SESSION_KEY);
+      const cloudStoredSession = await refreshCloudSession();
+      if (cloudStoredSession) {
+        try {
+          const cloudUser = await cloudCurrentProfile();
+          if (cloudUser.status === "Inativo") {
+            localStorage.removeItem(CLOUD_SESSION_KEY);
+            cloudSession = null;
+            return;
+          }
+          await startSession(cloudUser);
+          return;
+        } catch (error) {
+          console.warn("Sessão cloud expirada ou inválida.", error);
+          localStorage.removeItem(CLOUD_SESSION_KEY);
+          cloudSession = null;
+        }
+      }
       if (sessionId) {
         const user = users.find(item => item.id === sessionId && item.status !== "Inativo");
         if (user) await startSession(user);
@@ -2543,6 +2768,24 @@
       event.preventDefault();
       const email = $("#email").value.trim().toLowerCase();
       const password = $("#password").value;
+      if (cloudEnabled()) {
+        try {
+          await cloudLogin(email, password);
+          const cloudUser = await cloudCurrentProfile();
+          if (cloudUser.status === "Inativo") {
+            localStorage.removeItem(CLOUD_SESSION_KEY);
+            cloudSession = null;
+            $("#authError").textContent = "Este login está inativo. Fale com o administrador.";
+            return;
+          }
+          await startSession(cloudUser);
+          return;
+        } catch (error) {
+          console.warn(error);
+          $("#authError").textContent = "E-mail ou senha inválidos no Nexor Cloud.";
+          return;
+        }
+      }
       const passwordHash = await sha256(password);
       const user = users.find(item => item.email.toLowerCase() === email && item.status !== "Inativo");
       if (!user || user.passwordHash !== passwordHash) {
@@ -2558,6 +2801,10 @@
     async function startSession(user) {
       currentUser = user;
       await loadDb();
+      if (cloudEnabled() && cloudSession?.access_token) {
+        await loadCloudUsers();
+        currentUser = users.find(item => item.id === user.id) || user;
+      }
       document.body.dataset.theme = db.theme || "light";
       $("#authView").classList.add("hidden");
       $("#appShell").classList.remove("hidden");
@@ -2567,8 +2814,11 @@
 
     function logout() {
       localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(CLOUD_SESSION_KEY);
       currentUser = null;
       db = null;
+      cloudSession = null;
+      cloudWorkspaceRecordId = "";
       $("#appShell").classList.add("hidden");
       $("#authView").classList.remove("hidden");
       $("#password").value = "";
@@ -4187,6 +4437,28 @@
         alert("Preencha nome, e-mail e senha para criar o login.");
         return;
       }
+      if (cloudEnabled() && cloudSession?.access_token) {
+        try {
+          await cloudAdminAction("create", {
+            name,
+            email,
+            password: plainPassword,
+            gender: String(formData.get("gender") || "neutral"),
+            role: String(formData.get("role") || "colaborador")
+          });
+          await loadCloudUsers();
+          accessNotice = `Login criado no Supabase e disponível em qualquer dispositivo: ${email}`;
+          logActivity(`Login cloud criado: ${email}`);
+          saveDb();
+          form.reset();
+          renderApp();
+          return;
+        } catch (error) {
+          console.error(error);
+          alert("Não foi possível criar o login no Supabase. Confira se a Edge Function nexor-admin-user foi publicada e se sua conta é admin.");
+          return;
+        }
+      }
       if (users.some(user => user.email.toLowerCase() === email)) {
         alert("Este e-mail já existe.");
         return;
@@ -4230,6 +4502,11 @@
         alert(`Senha de ${user.email}: ${user.plainPassword}`);
         return;
       }
+      if (cloudEnabled()) {
+        const shouldResetCloud = confirm("Não há senha inicial salva para este login no Supabase. Deseja definir uma nova senha agora para poder visualizar depois?");
+        if (shouldResetCloud) changeUserPassword(id);
+        return;
+      }
       const shouldReset = confirm("Essa senha antiga está protegida por hash e não pode ser revelada. Deseja alterar a senha agora para passar a visualizar a nova?");
       if (shouldReset) changeUserPassword(id);
     }
@@ -4241,6 +4518,18 @@
       if (newPassword === null) return;
       if (newPassword.length < 6) {
         alert("Use uma senha com pelo menos 6 caracteres.");
+        return;
+      }
+      if (cloudEnabled() && cloudSession?.access_token) {
+        try {
+          await cloudAdminAction("update_password", { userId: id, password: newPassword });
+          await loadCloudUsers();
+          accessNotice = `Senha atualizada no Supabase: ${user.email}`;
+          renderApp();
+        } catch (error) {
+          console.error(error);
+          alert("Não foi possível alterar a senha no Supabase.");
+        }
         return;
       }
       user.passwordHash = await sha256(newPassword);
@@ -4259,18 +4548,48 @@
       renderApp();
     }
 
-    function setUserStatus(id, status) {
+    async function setUserStatus(id, status) {
       const user = users.find(item => item.id === id);
       if (!user || user.email === ADMIN_EMAIL) return;
+      if (cloudEnabled() && cloudSession?.access_token) {
+        try {
+          await cloudAdminAction("set_status", {
+            userId: id,
+            status: status === "Inativo" ? "inativo" : "ativo"
+          });
+          await loadCloudUsers();
+          accessNotice = `${status === "Inativo" ? "Usuário inativado" : "Usuário ativado"} no Supabase: ${user.email}`;
+          renderApp();
+        } catch (error) {
+          console.error(error);
+          alert("Não foi possível alterar o status no Supabase.");
+        }
+        return;
+      }
       user.status = status;
       saveUsers();
       renderApp();
     }
 
-    function removeUser(id) {
+    async function removeUser(id) {
       const user = users.find(item => item.id === id);
       if (!user || user.email === ADMIN_EMAIL) return;
-      if (!confirm("Remover este login e seu banco de dados local?")) return;
+      const message = cloudEnabled()
+        ? "Remover este login do Supabase? O acesso será apagado em todos os dispositivos."
+        : "Remover este login e seu banco de dados local?";
+      if (!confirm(message)) return;
+      if (cloudEnabled() && cloudSession?.access_token) {
+        try {
+          await cloudAdminAction("delete", { userId: id });
+          await loadCloudUsers();
+          accessNotice = `Login removido do Supabase: ${user.email}`;
+          renderApp();
+        } catch (error) {
+          console.error(error);
+          alert("Não foi possível remover o usuário no Supabase.");
+        }
+        return;
+      }
       users = users.filter(item => item.id !== id);
       localStorage.removeItem(dbKey(id));
       saveUsers();
