@@ -1,4 +1,7 @@
 const jsonHeaders = { "Content-Type": "application/json" };
+const mainAdminEmail = "jvgsales72@gmail.com";
+const allowedRoles = new Set(["gestor", "colaborador"]);
+const allowedGenders = new Set(["male", "female", "neutral"]);
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
@@ -28,12 +31,182 @@ module.exports = async function handler(req, res) {
     if (action === "delete_client") return res.status(200).json(await deleteClientAccount(supabaseUrl, serviceKey, body));
     if (action === "set_client_subscription") return res.status(200).json(await setClientSubscription(supabaseUrl, serviceKey, body));
     if (action === "set_client_login") return res.status(200).json(await setClientLogin(supabaseUrl, serviceKey, body));
+    if (action === "create") return res.status(200).json(await createTeamUser(supabaseUrl, serviceKey, body, caller.id));
+    if (action === "update_password") return res.status(200).json(await updateTeamUserPassword(supabaseUrl, serviceKey, body, caller.id));
+    if (action === "set_status") return res.status(200).json(await setTeamUserStatus(supabaseUrl, serviceKey, body, caller.id));
+    if (action === "delete") return res.status(200).json(await deleteTeamUser(supabaseUrl, serviceKey, body, caller.id));
+    if (action === "list_signup_requests") return res.status(200).json(await listSignupRequests(supabaseUrl, serviceKey));
+    if (action === "approve_signup_request") return res.status(200).json(await approveSignupRequest(supabaseUrl, serviceKey, body, caller.id));
+    if (action === "reject_signup_request") return res.status(200).json(await rejectSignupRequest(supabaseUrl, serviceKey, body, caller.id));
 
     res.status(400).json({ error: "Unknown action." });
   } catch (error) {
     res.status(400).json({ error: error.message || "Nexor admin API error." });
   }
 };
+
+async function createTeamUser(supabaseUrl, serviceKey, body, callerId) {
+  const payload = normalizeTeamUserPayload(body);
+  if (!payload.name || !payload.email || payload.password.length < 6) {
+    throw new Error("Informe nome, e-mail e senha com pelo menos 6 caracteres.");
+  }
+
+  const auth = await authAdmin(supabaseUrl, serviceKey, "/admin/users", {
+    method: "POST",
+    body: {
+      email: payload.email,
+      password: payload.password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: payload.name,
+        gender: payload.gender
+      }
+    }
+  });
+  const user = auth.user || auth;
+  if (!user?.id) throw new Error("UsuÃ¡rio nÃ£o foi criado no Supabase Auth.");
+
+  const profile = await upsertProfile(supabaseUrl, serviceKey, {
+    id: user.id,
+    email: payload.email,
+    full_name: payload.name,
+    gender: payload.gender,
+    app_role: payload.role,
+    status: "ativo"
+  });
+
+  await upsertPasswordNote(supabaseUrl, serviceKey, user.id, payload.password, callerId);
+  return { profile };
+}
+
+async function updateTeamUserPassword(supabaseUrl, serviceKey, body, callerId) {
+  const userId = String(body.userId || "");
+  const password = String(body.password || "");
+  if (!userId || password.length < 6) throw new Error("Informe uma senha com pelo menos 6 caracteres.");
+
+  const protectedError = await mutableUserError(supabaseUrl, serviceKey, userId, callerId);
+  if (protectedError) throw new Error(protectedError);
+
+  await authAdmin(supabaseUrl, serviceKey, `/admin/users/${encodeURIComponent(userId)}`, {
+    method: "PUT",
+    body: { password }
+  });
+  await upsertPasswordNote(supabaseUrl, serviceKey, userId, password, callerId);
+  return { ok: true };
+}
+
+async function setTeamUserStatus(supabaseUrl, serviceKey, body, callerId) {
+  const userId = String(body.userId || "");
+  if (!userId) throw new Error("UsuÃ¡rio nÃ£o informado.");
+
+  const protectedError = await mutableUserError(supabaseUrl, serviceKey, userId, callerId);
+  if (protectedError) throw new Error(protectedError);
+
+  const status = String(body.status || "") === "inativo" ? "inativo" : "ativo";
+  const profile = await restPatch(supabaseUrl, serviceKey, `/nexor_profiles?id=eq.${encodeURIComponent(userId)}`, { status });
+  return { profile };
+}
+
+async function deleteTeamUser(supabaseUrl, serviceKey, body, callerId) {
+  const userId = String(body.userId || "");
+  if (!userId) throw new Error("UsuÃ¡rio nÃ£o informado.");
+
+  const protectedError = await mutableUserError(supabaseUrl, serviceKey, userId, callerId);
+  if (protectedError) throw new Error(protectedError);
+
+  await authAdmin(supabaseUrl, serviceKey, `/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
+  return { ok: true };
+}
+
+async function listSignupRequests(supabaseUrl, serviceKey) {
+  const rows = await restFetch(
+    supabaseUrl,
+    serviceKey,
+    "/nexor_signup_requests?select=*&order=created_at.desc&limit=100"
+  );
+  return { requests: rows || [] };
+}
+
+async function approveSignupRequest(supabaseUrl, serviceKey, body, callerId) {
+  const request = await restSingle(
+    supabaseUrl,
+    serviceKey,
+    `/nexor_signup_requests?id=eq.${encodeURIComponent(body.requestId || "")}&select=*`
+  );
+  if (!request) throw new Error("PrÃ©-cadastro nÃ£o encontrado.");
+  if (request.status !== "pendente") throw new Error("Este prÃ©-cadastro jÃ¡ foi analisado.");
+
+  const businessName = request.business_name || `Conta ${request.responsible_name || request.email.split("@")[0]}`;
+  const approved = await createClientAccount(supabaseUrl, serviceKey, {
+    businessName,
+    responsibleName: request.responsible_name || request.email.split("@")[0],
+    document: request.document || "",
+    email: request.email,
+    whatsapp: request.whatsapp || "",
+    accessUsername: request.access_username || request.email.split("@")[0],
+    password: request.password_note,
+    monthlyValue: body.monthlyValue || 0,
+    subscriptionStatus: body.subscriptionStatus || "pendente",
+    paymentDueDate: body.paymentDueDate || "",
+    lastPaymentDate: body.lastPaymentDate || "",
+    notes: [body.notes, "Criado a partir de prÃ©-cadastro aprovado."].filter(Boolean).join("\n"),
+    slug: body.slug || `${businessName}-${String(request.id).slice(0, 8)}`
+  }, callerId);
+
+  const updated = await restPatch(
+    supabaseUrl,
+    serviceKey,
+    `/nexor_signup_requests?id=eq.${encodeURIComponent(request.id)}`,
+    {
+      status: "aprovado",
+      decision_note: String(body.notes || ""),
+      reviewed_by: callerId,
+      reviewed_at: new Date().toISOString(),
+      created_client_id: approved.client.id
+    }
+  );
+
+  return { request: updated, client: approved.client };
+}
+
+async function rejectSignupRequest(supabaseUrl, serviceKey, body, callerId) {
+  const requestId = String(body.requestId || "");
+  if (!requestId) throw new Error("PrÃ©-cadastro nÃ£o informado.");
+  const request = await restPatch(
+    supabaseUrl,
+    serviceKey,
+    `/nexor_signup_requests?id=eq.${encodeURIComponent(requestId)}`,
+    {
+      status: "reprovado",
+      decision_note: String(body.note || ""),
+      reviewed_by: callerId,
+      reviewed_at: new Date().toISOString()
+    }
+  );
+  return { request };
+}
+
+function normalizeTeamUserPayload(body) {
+  const role = allowedRoles.has(String(body.role)) ? String(body.role) : "colaborador";
+  const gender = allowedGenders.has(String(body.gender)) ? String(body.gender) : "neutral";
+  return {
+    name: String(body.name || "").trim(),
+    email: String(body.email || "").trim().toLowerCase(),
+    password: String(body.password || ""),
+    gender,
+    role
+  };
+}
+
+async function mutableUserError(supabaseUrl, serviceKey, userId, callerId) {
+  if (userId === callerId) return "O administrador atual nÃ£o pode alterar o prÃ³prio acesso por aqui.";
+  const profile = await restSingle(supabaseUrl, serviceKey, `/nexor_profiles?id=eq.${encodeURIComponent(userId)}&select=id,email,app_role`);
+  if (!profile) return "UsuÃ¡rio nÃ£o encontrado.";
+  if (String(profile.email || "").toLowerCase() === mainAdminEmail || profile.app_role === "admin") {
+    return "O acesso do administrador principal Ã© protegido.";
+  }
+  return "";
+}
 
 async function createClientAccount(supabaseUrl, serviceKey, body, callerId) {
   const payload = normalizeClientPayload(body);
