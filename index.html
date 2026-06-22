@@ -2190,6 +2190,7 @@
     };
     const modules = [
       ["dashboard", "Dashboard geral", "layout-dashboard"],
+      ["accounts", "Usuários / acessos", "users"],
       ["tasks", "Tarefas", "check-square"],
       ["projects", "Projetos", "folder-kanban"],
       ["kanban", "Kanban", "columns"],
@@ -2870,6 +2871,7 @@
     }
 
     function canAccess(moduleId) {
+      if (moduleId === "accounts") return isAdmin();
       return Boolean(currentUser);
     }
 
@@ -3056,6 +3058,7 @@
     function renderModule() {
       const renderers = {
         dashboard: renderDashboard,
+        accounts: renderAccounts,
         tasks: renderTasks,
         projects: renderProjects,
         kanban: renderKanban,
@@ -3441,20 +3444,20 @@
       `;
     }
 
-    function renderPlatformClients() {
+    function renderAccounts() {
       const totalValue = sum(platformClients.map(client => client.monthlyValue));
       const blockedCount = platformClients.filter(client => !clientAccessState(client).allowed).length;
       return `
-        ${moduleHead("Clientes Nexor", "Contas, assinatura, acesso individual e bases isoladas por cliente.", '<button class="btn accent" type="button" data-open-client-account data-icon="plus">Criar cliente</button>')}
+        ${moduleHead("Usuários / acessos", "Crie contas para outras pessoas usarem o Nexor com interface e base próprias.", '<button class="btn accent" type="button" data-open-client-account data-icon="plus">Criar usuário</button>')}
         ${accessNotice ? `<div class="save-notice">${escapeHtml(accessNotice)}</div>` : ""}
         <div class="grid metrics">
-          ${metric("Clientes", platformClients.length, `${blockedCount} bloqueados`, "users", "accent")}
+          ${metric("Usuários", platformClients.length, `${blockedCount} bloqueados`, "users", "accent")}
           ${metric("Mensalidades", money(totalValue), "valor mensal total", "wallet", "success")}
           ${metric("Pendentes", platformClients.filter(client => client.subscriptionStatus === "pendente").length, "dentro ou fora do prazo", "bell", "gold")}
           ${metric("Atrasados", platformClients.filter(client => client.subscriptionStatus === "atrasado" || businessDaysLate(client.paymentDueDate) > 1).length, "revisar cobrança", "x", "danger")}
         </div>
         <section class="panel dashboard-row">
-          <div class="section-title"><h2>Contas de clientes</h2><span class="chip gold">${platformClients.length} registros</span></div>
+          <div class="section-title"><h2>Contas de acesso</h2><span class="chip gold">${platformClients.length} registros</span></div>
           <div class="table-wrap">
             <table>
               <thead>
@@ -3509,7 +3512,7 @@
                       </td>
                     </tr>
                   `;
-                }).join("") || `<tr><td colspan="7">${emptyInline("Nenhum cliente criado.")}</td></tr>`}
+                }).join("") || `<tr><td colspan="7">${emptyInline("Nenhum usuário criado.")}</td></tr>`}
               </tbody>
             </table>
           </div>
@@ -3549,7 +3552,6 @@
     }
 
     function renderClients() {
-      if (isAdmin()) return renderPlatformClients();
       return `
         ${moduleHead("Clientes", "Cadastro, contatos, projetos vinculados, pagamentos e histórico.", canManage() ? '<button class="btn accent" type="button" data-open="client" data-icon="plus">Novo cliente</button>' : "")}
         <div class="grid three">
@@ -3883,12 +3885,12 @@
 
     function clientAdminShortcut() {
       return `
-        <div class="section-title"><h2>Clientes Nexor</h2><span class="chip gold">${platformClients.length} contas</span></div>
+        <div class="section-title"><h2>Usuários / acessos</h2><span class="chip gold">${platformClients.length} contas</span></div>
         <div class="list">
-          <div class="list-row"><strong>Criar clientes e logins</strong><span class="muted">Cada cliente recebe link, usuário, senha e base zerada.</span></div>
+          <div class="list-row"><strong>Criar usuários do Nexor</strong><span class="muted">Cada usuário recebe link, usuário, senha e base zerada.</span></div>
           <div class="row-actions">
-            <button class="btn accent" type="button" data-module="clients" data-icon="users">Abrir clientes</button>
-            <button class="btn" type="button" data-open-client-account data-icon="plus">Criar cliente</button>
+            <button class="btn accent" type="button" data-module="accounts" data-icon="users">Abrir acessos</button>
+            <button class="btn" type="button" data-open-client-account data-icon="plus">Criar usuário</button>
           </div>
         </div>
       `;
@@ -4756,7 +4758,7 @@
           <form id="clientAccountForm">
             <div class="modal-head">
               <div>
-                <h2>${id ? "Editar cliente" : "Criar cliente"}</h2>
+                <h2>${id ? "Editar usuário" : "Criar usuário"}</h2>
                 <p class="muted">Conta, assinatura, login e link individual.</p>
               </div>
               <button class="btn icon" type="button" data-close-modal title="Fechar" data-icon="x"></button>
@@ -4764,7 +4766,7 @@
             ${clientAccountForm(client)}
             <div class="modal-actions">
               <button class="btn" type="button" data-close-modal>Cancelar</button>
-              <button class="btn accent" type="submit" data-icon="check">Salvar cliente</button>
+              <button class="btn accent" type="submit" data-icon="check">Salvar usuário</button>
             </div>
           </form>
         </dialog>
@@ -4817,12 +4819,12 @@
         try {
           await cloudAdminAction(id ? "update_client" : "create_client", payload);
           await loadCloudClients();
-          accessNotice = `${id ? "Cliente atualizado" : "Cliente criado"}: ${payload.businessName}`;
+          accessNotice = `${id ? "Usuário atualizado" : "Usuário criado"}: ${payload.businessName}`;
           $("#modalRoot dialog")?.close();
           renderApp();
         } catch (error) {
           console.error(error);
-          alert(error.message || "Não foi possível salvar o cliente no Supabase.");
+          alert(error.message || "Não foi possível salvar o usuário no Supabase.");
         }
         return;
       }
@@ -4876,7 +4878,7 @@
       platformClients = id ? platformClients.map(client => client.id === id ? record : client) : [record, ...platformClients];
       saveUsers();
       savePlatformClients();
-      accessNotice = `${id ? "Cliente atualizado" : "Cliente criado"}: ${record.businessName}`;
+      accessNotice = `${id ? "Usuário atualizado" : "Usuário criado"}: ${record.businessName}`;
     }
 
     async function setClientSubscription(id, status) {
@@ -4916,7 +4918,7 @@
     async function deleteClientAccount(id) {
       const client = platformClients.find(item => item.id === id);
       if (!client) return;
-      if (!confirm(`Excluir o cliente ${client.businessName} e o login vinculado?`)) return;
+      if (!confirm(`Excluir o usuário ${client.businessName} e o login vinculado?`)) return;
       if (cloudEnabled() && cloudSession?.access_token) {
         await cloudAdminAction("delete_client", { clientId: id });
         await loadCloudClients();
@@ -4927,7 +4929,7 @@
         saveUsers();
         savePlatformClients();
       }
-      accessNotice = `Cliente excluído: ${client.businessName}`;
+      accessNotice = `Usuário excluído: ${client.businessName}`;
       renderApp();
     }
 
