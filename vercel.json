@@ -4,7 +4,7 @@
   "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/cliente/(.*)",
+      "source": "/cliente/:path*",
       "destination": "/index.html"
     }
   ],
