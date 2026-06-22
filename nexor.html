@@ -319,6 +319,18 @@
       font-weight: 700;
     }
 
+    .save-notice.danger {
+      border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+      color: var(--danger);
+      background: color-mix(in srgb, var(--danger) 10%, transparent);
+    }
+
+    .save-notice.neutral {
+      border-color: color-mix(in srgb, var(--line) 76%, var(--text));
+      color: var(--text);
+      background: color-mix(in srgb, var(--panel) 90%, transparent);
+    }
+
     .shell {
       min-height: 100vh;
       display: grid;
@@ -3449,6 +3461,7 @@
       const blockedCount = platformClients.filter(client => !clientAccessState(client).allowed).length;
       return `
         ${moduleHead("Usuários / acessos", "Crie contas para outras pessoas usarem o Nexor com interface e base próprias.", '<button class="btn accent" type="button" data-open-client-account data-icon="plus">Criar usuário</button>')}
+        ${cloudAccessNotice()}
         ${accessNotice ? `<div class="save-notice">${escapeHtml(accessNotice)}</div>` : ""}
         <div class="grid metrics">
           ${metric("Usuários", platformClients.length, `${blockedCount} bloqueados`, "users", "accent")}
@@ -3549,6 +3562,16 @@
           ${area("Observações", "notes", client.notes, "wide")}
         </div>
       `;
+    }
+
+    function cloudAccessNotice() {
+      if (cloudEnabled() && cloudSession?.access_token) {
+        return `<div class="save-notice">Nexor Cloud ativo. Usuários criados aqui ficam salvos no Supabase e podem acessar de qualquer dispositivo.</div>`;
+      }
+      if (cloudEnabled()) {
+        return `<div class="save-notice danger">Nexor Cloud configurado, mas esta sessão não está autenticada no Supabase. Saia e entre novamente pela URL publicada da Vercel antes de criar usuários.</div>`;
+      }
+      return `<div class="save-notice danger">Modo local ativo: usuários criados aqui ficariam somente neste navegador. Para acessar em outro dispositivo, abra a URL publicada na Vercel com as variáveis do Supabase configuradas.</div>`;
     }
 
     function renderClients() {
@@ -4815,23 +4838,26 @@
         return;
       }
 
-      if (cloudEnabled() && cloudSession?.access_token) {
-        try {
-          await cloudAdminAction(id ? "update_client" : "create_client", payload);
-          await loadCloudClients();
-          accessNotice = `${id ? "Usuário atualizado" : "Usuário criado"}: ${payload.businessName}`;
-          $("#modalRoot dialog")?.close();
-          renderApp();
-        } catch (error) {
-          console.error(error);
-          alert(error.message || "Não foi possível salvar o usuário no Supabase.");
-        }
+      if (!cloudEnabled()) {
+        alert("Nexor Cloud não está ativo. Este login ficaria salvo apenas neste navegador. Publique na Vercel, configure as variáveis do Supabase e abra a URL publicada para criar usuários com acesso em qualquer dispositivo.");
         return;
       }
 
-      await saveLocalClientAccount(payload, id);
-      $("#modalRoot dialog")?.close();
-      renderApp();
+      if (!cloudSession?.access_token) {
+        alert("Sua sessão atual não está autenticada no Supabase. Saia e entre novamente pela URL publicada da Vercel antes de criar ou editar usuários.");
+        return;
+      }
+
+      try {
+        await cloudAdminAction(id ? "update_client" : "create_client", payload);
+        await loadCloudClients();
+        accessNotice = `${id ? "Usuário atualizado" : "Usuário criado"}: ${payload.businessName}`;
+        $("#modalRoot dialog")?.close();
+        renderApp();
+      } catch (error) {
+        console.error(error);
+        alert(error.message || "Não foi possível salvar o usuário no Supabase.");
+      }
     }
 
     async function saveLocalClientAccount(payload, id = "") {
