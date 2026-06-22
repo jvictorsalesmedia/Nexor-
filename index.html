@@ -2880,7 +2880,29 @@
       cloudWorkspaceRecordId = record?.id || "";
       db = record?.data?.db || createDefaultDb(currentUser.email === ADMIN_EMAIL);
       ensureDbShape();
+      await loadCloudNotifications();
       if (!cloudWorkspaceRecordId) saveCloudDb();
+    }
+
+    async function loadCloudNotifications() {
+      if (currentUser?.role !== "admin" || !cloudSession?.access_token) return;
+      try {
+        const rows = await cloudFetch("/rest/v1/nexor_records?record_type=eq.notification&select=id,data,created_at&order=created_at.desc&limit=50");
+        const notifications = (rows || []).map(row => ({
+          id: row.data?.id || row.id,
+          label: row.data?.label || "Notificacao Nexor",
+          date: row.data?.date || row.created_at || today(),
+          kind: row.data?.kind || "notification",
+          userId: row.data?.userId || "",
+          userEmail: row.data?.userEmail || "",
+          userName: row.data?.userName || ""
+        }));
+        if (!notifications.length) return;
+        const seen = new Set(notifications.map(item => item.id));
+        db.activity = [...notifications, ...db.activity.filter(item => !seen.has(item.id))].slice(0, 60);
+      } catch (error) {
+        console.warn("Nao foi possivel carregar notificacoes cloud.", error);
+      }
     }
 
     async function saveCloudDb() {
@@ -4084,6 +4106,7 @@
               <form id="ownPasswordForm" class="form-grid wide">
                 <div class="field"><label>Senha atual</label><input name="currentPassword" type="password" autocomplete="current-password" required></div>
                 <div class="field"><label>Nova senha</label><input name="newPassword" type="password" autocomplete="new-password" minlength="6" required></div>
+                <div class="field"><label>Confirmar nova senha</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required></div>
                 <div class="wide row-actions">
                   <button class="btn" type="submit" data-icon="check">Alterar minha senha</button>
                 </div>
@@ -5071,8 +5094,13 @@
       const formData = new FormData(event.currentTarget);
       const currentPassword = String(formData.get("currentPassword") || "");
       const newPassword = String(formData.get("newPassword") || "");
+      const confirmPassword = String(formData.get("confirmPassword") || "");
       if (newPassword.length < 6) {
         alert("Use uma senha com pelo menos 6 caracteres.");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        alert("A nova senha e a confirmacao devem ser iguais.");
         return;
       }
 
@@ -5105,12 +5133,61 @@
           localUser.passwordUpdatedAt = today();
           saveUsers();
         }
+        let notificationWarning = "";
+        try {
+          await notifyPasswordChanged();
+        } catch (notifyError) {
+          console.warn(notifyError);
+          notificationWarning = " Sua senha foi alterada, mas nao foi possivel notificar o administrador.";
+        }
         event.currentTarget.reset();
-        accessNotice = "Sua senha foi alterada.";
+        accessNotice = `Sua senha foi alterada.${notificationWarning}`;
         renderApp();
       } catch (error) {
         alert(error.message || "Não foi possível alterar sua senha.");
       }
+    }
+
+    async function notifyPasswordChanged() {
+      const label = `Senha alterada: ${currentUser.name || currentUser.email}`;
+      if (cloudEnabled() && cloudSession?.access_token && location.protocol !== "file:") {
+        const response = await fetch("/api/user-event", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${cloudSession.access_token}`
+          },
+          body: JSON.stringify({ action: "password_changed" })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Senha alterada, mas nao foi possivel notificar o administrador.");
+        return;
+      }
+
+      const adminUser = users.find(user => user.role === "admin" || user.email === ADMIN_EMAIL);
+      if (!adminUser) return;
+      const item = {
+        id: uid("act"),
+        label,
+        date: new Date().toISOString(),
+        kind: "password_changed",
+        userId: currentUser.id,
+        userEmail: currentUser.email
+      };
+      if (adminUser.id === currentUser.id) {
+        db.activity.unshift(item);
+        db.activity = db.activity.slice(0, 60);
+        saveDb();
+        return;
+      }
+      const key = dbKey(adminUser.id);
+      const adminDb = parseJson(localStorage.getItem(key)) || createDefaultDb(true);
+      adminDb.activity ||= [];
+      adminDb.activity.unshift(item);
+      adminDb.activity = adminDb.activity.slice(0, 60);
+      const payload = JSON.stringify(adminDb);
+      localStorage.setItem(key, payload);
+      writePersistentValue(key, payload);
     }
 
     function saveCalendarSettings(event) {
