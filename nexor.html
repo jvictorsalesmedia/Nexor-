@@ -2104,10 +2104,10 @@
   <div id="authView" class="auth-view">
     <form id="loginForm" class="auth-card" autocomplete="on">
       <img class="auth-logo" src="nexor-logo-transparent.png" alt="Nexor" />
-      <p>Organize sua rotina, seus projetos e seus resultados em um só lugar.</p>
+      <p id="loginContextText">Organize sua rotina, seus projetos e seus resultados em um só lugar.</p>
       <div class="field">
-        <label for="email">E-mail</label>
-        <input id="email" name="email" type="email" autocomplete="username" required />
+        <label id="loginIdentifierLabel" for="email">Usuário ou e-mail</label>
+        <input id="email" name="email" type="text" autocomplete="username" required />
       </div>
       <div class="field">
         <label for="password">Senha</label>
@@ -2162,6 +2162,8 @@
     const ADMIN_HASH = "74d6ef28510a9611e36fb19d8f7ec28370b84dbca1616e111d2f35b55434a4d9";
     const USERS_KEY = "nexor.users.v1";
     const USERS_BACKUP_KEY = "nexor.users.backup.v1";
+    const PLATFORM_CLIENTS_KEY = "nexor.platform.clients.v1";
+    const PLATFORM_CLIENTS_BACKUP_KEY = "nexor.platform.clients.backup.v1";
     const PERSIST_DB_NAME = "nexor.persist.v1";
     const PERSIST_STORE = "kv";
     const SESSION_KEY = "nexor.session.v1";
@@ -2183,7 +2185,8 @@
     const roles = {
       admin: "Administrador",
       gestor: "Gestor",
-      colaborador: "Colaborador"
+      colaborador: "Colaborador",
+      cliente: "Cliente"
     };
     const modules = [
       ["dashboard", "Dashboard geral", "layout-dashboard"],
@@ -2233,10 +2236,12 @@
     };
 
     let users = [];
+    let platformClients = [];
     let currentUser = null;
     let db = null;
     let activeModule = "dashboard";
     let accessNotice = "";
+    let clientRoute = { active: false, slug: "" };
     let cloudConfig = { url: "", anonKey: "" };
     let cloudSession = null;
     let cloudWorkspaceRecordId = "";
@@ -2248,11 +2253,52 @@
     const money = value => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     const dateText = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString("pt-BR") : "Sem data";
     const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    const normalizeText = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const slugify = value => normalizeText(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || `cliente-${Date.now().toString(36)}`;
     const getUserName = id => users.find(user => user.id === id)?.name || "Sem responsável";
     const getClientName = id => db.clients.find(client => client.id === id)?.name || "Sem cliente";
     const getProjectName = id => db.projects.find(project => project.id === id)?.name || "Sem projeto";
     const isAdmin = () => currentUser?.role === "admin";
     const canManage = () => Boolean(currentUser);
+
+    function parseClientRoute() {
+      const match = location.pathname.match(/^\/cliente\/([^/?#]+)/i);
+      const querySlug = new URLSearchParams(location.search).get("cliente");
+      const slug = decodeURIComponent(match?.[1] || querySlug || "").trim().toLowerCase();
+      return { active: Boolean(slug), slug };
+    }
+
+    function clientAccessUrl(client) {
+      const origin = location.protocol === "file:" ? "https://seu-dominio.com" : location.origin;
+      return `${origin}/cliente/${encodeURIComponent(client.slug || slugify(client.businessName || client.business_name || client.name))}`;
+    }
+
+    function businessDaysLate(dateValue, referenceValue = today()) {
+      if (!dateValue) return 0;
+      const due = new Date(`${dateValue}T12:00:00`);
+      const reference = new Date(`${referenceValue}T12:00:00`);
+      if (Number.isNaN(due.getTime()) || Number.isNaN(reference.getTime()) || reference <= due) return 0;
+      let count = 0;
+      const cursor = new Date(due);
+      cursor.setDate(cursor.getDate() + 1);
+      while (cursor <= reference) {
+        const day = cursor.getDay();
+        if (day !== 0 && day !== 6) count += 1;
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return count;
+    }
+
+    function clientAccessState(client) {
+      const status = String(client.subscriptionStatus || client.subscription_status || "pendente").toLowerCase();
+      const blocked = Boolean(client.loginBlocked ?? client.login_blocked);
+      const dueDate = client.paymentDueDate || client.payment_due_date || "";
+      const lateDays = businessDaysLate(dueDate);
+      if (blocked) return { allowed: false, reason: "Login bloqueado pelo administrador.", lateDays };
+      if (status === "pago") return { allowed: true, reason: "Assinatura paga.", lateDays };
+      if (lateDays > 1) return { allowed: false, reason: "Mensalidade com atraso maior que 1 dia útil.", lateDays };
+      return { allowed: true, reason: status === "atrasado" ? "Atraso dentro da tolerância." : "Mensalidade pendente dentro do prazo.", lateDays };
+    }
 
     function icon(name) {
       return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons["settings"]}</svg>`;
@@ -2384,7 +2430,12 @@
       const authUser = await cloudFetch("/auth/v1/user");
       const rows = await cloudFetch(`/rest/v1/nexor_profiles?id=eq.${encodeURIComponent(authUser.id)}&select=*`);
       const profile = rows?.[0] || {};
-      return cloudProfileToUser(profile, authUser);
+      const user = cloudProfileToUser(profile, authUser);
+      const clientRows = await cloudFetch(`/rest/v1/nexor_clients?auth_user_id=eq.${encodeURIComponent(user.id)}&select=*&limit=1`);
+      if (clientRows?.[0]) {
+        user.clientAccount = cloudClientToAccount(clientRows[0]);
+      }
+      return user;
     }
 
     function cloudProfileToUser(profile, authUser = {}) {
@@ -2420,11 +2471,85 @@
       users = mapped.length ? mapped : [currentUser].filter(Boolean);
     }
 
+    function cloudClientToAccount(client, password = "") {
+      return {
+        id: client.id,
+        authUserId: client.auth_user_id,
+        businessName: client.business_name || "",
+        responsibleName: client.responsible_name || "",
+        document: client.document || "",
+        email: client.email || "",
+        whatsapp: client.whatsapp || "",
+        accessUsername: client.access_username || "",
+        plainPassword: password,
+        monthlyValue: Number(client.monthly_value || 0),
+        subscriptionStatus: client.subscription_status || "pendente",
+        paymentDueDate: client.payment_due_date || "",
+        lastPaymentDate: client.last_payment_date || "",
+        notes: client.notes || "",
+        loginBlocked: Boolean(client.login_blocked),
+        slug: client.slug || slugify(client.business_name),
+        createdAt: client.created_at ? String(client.created_at).slice(0, 10) : ""
+      };
+    }
+
+    async function loadCloudClients() {
+      if (!cloudEnabled() || !cloudSession?.access_token || currentUser?.role !== "admin") return;
+      const rows = await cloudFetch("/rest/v1/nexor_clients?select=*&order=created_at.desc");
+      let passwords = new Map();
+      try {
+        const notes = await cloudFetch("/rest/v1/nexor_user_password_notes?select=user_id,password_note");
+        passwords = new Map((notes || []).map(note => [note.user_id, note.password_note || ""]));
+      } catch (error) {
+        console.warn("Não foi possível carregar senhas de clientes.", error);
+      }
+      platformClients = (rows || []).map(client => cloudClientToAccount(client, passwords.get(client.auth_user_id) || ""));
+    }
+
     async function cloudAdminAction(action, payload = {}) {
+      const body = JSON.stringify({ action, ...payload });
+      if (location.protocol !== "file:") {
+        const response = await fetch("/api/admin-client", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${cloudSession?.access_token || ""}`
+          },
+          body
+        });
+        if (response.ok) return response.json().catch(() => null);
+        const message = await response.text().catch(() => "");
+        throw new Error(message || `Erro API ${response.status}`);
+      }
       return cloudFetch("/functions/v1/nexor-admin-user", {
         method: "POST",
-        body: JSON.stringify({ action, ...payload })
+        body
       });
+    }
+
+    async function resolveClientLogin(identifier) {
+      const value = String(identifier || "").trim().toLowerCase();
+      if (!clientRoute.active) return value;
+      if (cloudEnabled() && location.protocol !== "file:") {
+        const response = await fetch("/api/resolve-client-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: clientRoute.slug, identifier: value })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.email) {
+          throw new Error(result.error || "Cliente ou usuário de acesso não encontrado.");
+        }
+        if (result.allowed === false) {
+          throw new Error(result.reason || "Acesso bloqueado.");
+        }
+        return String(result.email || "").toLowerCase();
+      }
+      const client = platformClients.find(item => item.slug === clientRoute.slug && [item.accessUsername, item.email].map(text => String(text || "").toLowerCase()).includes(value));
+      if (!client) throw new Error("Cliente ou usuário de acesso não encontrado.");
+      const state = clientAccessState(client);
+      if (!state.allowed) throw new Error(state.reason);
+      return client.email.toLowerCase();
     }
 
     async function loadUsers() {
@@ -2449,6 +2574,33 @@
       }
       users = users.map(user => user.email === ADMIN_EMAIL ? { ...user, role: "admin", passwordHash: user.passwordHash || ADMIN_HASH, status: "Ativo" } : user);
       saveUsers();
+    }
+
+    async function loadPlatformClients() {
+      if (cloudEnabled() && cloudSession?.access_token && currentUser?.role === "admin") {
+        await loadCloudClients();
+        return;
+      }
+      const primary = parseJson(localStorage.getItem(PLATFORM_CLIENTS_KEY)) || [];
+      const backup = parseJson(localStorage.getItem(PLATFORM_CLIENTS_BACKUP_KEY)) || [];
+      const indexed = parseJson(await readPersistentValue(PLATFORM_CLIENTS_KEY)) || [];
+      platformClients = [primary, backup, indexed]
+        .filter(Array.isArray)
+        .sort((a, b) => b.length - a.length)[0] || [];
+    }
+
+    function savePlatformClients() {
+      try {
+        const payload = JSON.stringify(platformClients);
+        localStorage.setItem(PLATFORM_CLIENTS_KEY, payload);
+        localStorage.setItem(PLATFORM_CLIENTS_BACKUP_KEY, payload);
+        writePersistentValue(PLATFORM_CLIENTS_KEY, payload);
+        return true;
+      } catch (error) {
+        console.error(error);
+        alert("Não foi possível salvar os clientes neste navegador.");
+        return false;
+      }
     }
 
     function saveUsers() {
@@ -2722,9 +2874,12 @@
     }
 
     async function boot() {
+      clientRoute = parseClientRoute();
       await loadCloudConfig();
       await loadUsers();
+      await loadPlatformClients();
       applyIcons();
+      applyLoginContext();
       $("#loginForm").addEventListener("submit", handleLogin);
       $("#logoutBtn").addEventListener("click", logout);
       $("#themeBtn").addEventListener("click", toggleTheme);
@@ -2750,6 +2905,13 @@
             cloudSession = null;
             return;
           }
+          const clientState = cloudUser.clientAccount ? clientAccessState(cloudUser.clientAccount) : { allowed: true };
+          if (!clientState.allowed) {
+            localStorage.removeItem(CLOUD_SESSION_KEY);
+            cloudSession = null;
+            $("#authError").textContent = clientState.reason || "Acesso bloqueado.";
+            return;
+          }
           await startSession(cloudUser);
           return;
         } catch (error) {
@@ -2764,32 +2926,51 @@
       }
     }
 
+    function applyLoginContext() {
+      if (clientRoute.active) {
+        $("#loginContextText").textContent = `Acesso individual: ${clientRoute.slug.replace(/-/g, " ")}`;
+        $("#loginIdentifierLabel").textContent = "Usuário de acesso";
+        $("#email").placeholder = "Digite o usuário definido pelo administrador";
+        return;
+      }
+      $("#loginContextText").textContent = "Organize sua rotina, seus projetos e seus resultados em um só lugar.";
+      $("#loginIdentifierLabel").textContent = "Usuário ou e-mail";
+      $("#email").placeholder = "E-mail do administrador ou usuário do cliente";
+    }
+
     async function handleLogin(event) {
       event.preventDefault();
-      const email = $("#email").value.trim().toLowerCase();
+      const identifier = $("#email").value.trim().toLowerCase();
       const password = $("#password").value;
       if (cloudEnabled()) {
         try {
+          const email = await resolveClientLogin(identifier);
           await cloudLogin(email, password);
           const cloudUser = await cloudCurrentProfile();
-          if (cloudUser.status === "Inativo") {
+          const clientState = cloudUser.clientAccount ? clientAccessState(cloudUser.clientAccount) : { allowed: true };
+          if (cloudUser.status === "Inativo" || !clientState.allowed) {
             localStorage.removeItem(CLOUD_SESSION_KEY);
             cloudSession = null;
-            $("#authError").textContent = "Este login está inativo. Fale com o administrador.";
+            $("#authError").textContent = clientState.reason || "Este login está inativo. Fale com o administrador.";
             return;
           }
           await startSession(cloudUser);
           return;
         } catch (error) {
           console.warn(error);
-          $("#authError").textContent = "E-mail ou senha inválidos no Nexor Cloud.";
+          $("#authError").textContent = error.message || "Usuário ou senha inválidos no Nexor Cloud.";
           return;
         }
       }
       const passwordHash = await sha256(password);
-      const user = users.find(item => item.email.toLowerCase() === email && item.status !== "Inativo");
+      const localEmail = await resolveLocalLogin(identifier).catch(error => {
+        $("#authError").textContent = error.message;
+        return "";
+      });
+      if (!localEmail) return;
+      const user = users.find(item => item.email.toLowerCase() === localEmail && item.status !== "Inativo");
       if (!user || user.passwordHash !== passwordHash) {
-        $("#authError").textContent = "E-mail ou senha inválidos.";
+        $("#authError").textContent = "Usuário ou senha inválidos.";
         return;
       }
       user.lastLogin = today();
@@ -2798,12 +2979,24 @@
       await startSession(user);
     }
 
+    async function resolveLocalLogin(identifier) {
+      const value = String(identifier || "").trim().toLowerCase();
+      if (!clientRoute.active) return value;
+      const client = platformClients.find(item => item.slug === clientRoute.slug && [item.accessUsername, item.email].map(text => String(text || "").toLowerCase()).includes(value));
+      if (!client) throw new Error("Cliente ou usuário de acesso não encontrado.");
+      const state = clientAccessState(client);
+      if (!state.allowed) throw new Error(state.reason);
+      return client.email.toLowerCase();
+    }
+
     async function startSession(user) {
       currentUser = user;
       await loadDb();
       if (cloudEnabled() && cloudSession?.access_token) {
         await loadCloudUsers();
-        currentUser = users.find(item => item.id === user.id) || user;
+        if (user.role === "admin") await loadCloudClients();
+        const refreshedUser = users.find(item => item.id === user.id);
+        currentUser = refreshedUser ? { ...user, ...refreshedUser, clientAccount: user.clientAccount } : user;
       }
       document.body.dataset.theme = db.theme || "light";
       $("#authView").classList.add("hidden");
@@ -3248,7 +3441,115 @@
       `;
     }
 
+    function renderPlatformClients() {
+      const totalValue = sum(platformClients.map(client => client.monthlyValue));
+      const blockedCount = platformClients.filter(client => !clientAccessState(client).allowed).length;
+      return `
+        ${moduleHead("Clientes Nexor", "Contas, assinatura, acesso individual e bases isoladas por cliente.", '<button class="btn accent" type="button" data-open-client-account data-icon="plus">Criar cliente</button>')}
+        ${accessNotice ? `<div class="save-notice">${escapeHtml(accessNotice)}</div>` : ""}
+        <div class="grid metrics">
+          ${metric("Clientes", platformClients.length, `${blockedCount} bloqueados`, "users", "accent")}
+          ${metric("Mensalidades", money(totalValue), "valor mensal total", "wallet", "success")}
+          ${metric("Pendentes", platformClients.filter(client => client.subscriptionStatus === "pendente").length, "dentro ou fora do prazo", "bell", "gold")}
+          ${metric("Atrasados", platformClients.filter(client => client.subscriptionStatus === "atrasado" || businessDaysLate(client.paymentDueDate) > 1).length, "revisar cobrança", "x", "danger")}
+        </div>
+        <section class="panel dashboard-row">
+          <div class="section-title"><h2>Contas de clientes</h2><span class="chip gold">${platformClients.length} registros</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Negócio</th>
+                  <th>Responsável</th>
+                  <th>Acesso</th>
+                  <th>Mensalidade</th>
+                  <th>Status</th>
+                  <th>Pagamento</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${platformClients.map(client => {
+                  const state = clientAccessState(client);
+                  return `
+                    <tr>
+                      <td>
+                        <strong>${escapeHtml(client.businessName)}</strong>
+                        <div class="meta">${escapeHtml(client.document || "CPF/CNPJ não informado")} • ${escapeHtml(client.whatsapp || "Sem WhatsApp")}</div>
+                      </td>
+                      <td>
+                        <strong>${escapeHtml(client.responsibleName)}</strong>
+                        <div class="meta">${escapeHtml(client.email)}</div>
+                      </td>
+                      <td>
+                        <strong>${escapeHtml(client.accessUsername)}</strong>
+                        <div class="meta">/cliente/${escapeHtml(client.slug)}</div>
+                      </td>
+                      <td>${money(client.monthlyValue)}</td>
+                      <td>
+                        ${subscriptionChip(client.subscriptionStatus)}
+                        <div class="meta">${state.allowed ? "Acesso liberado" : state.reason}</div>
+                      </td>
+                      <td>
+                        <div class="meta"><span>Combinado: ${dateText(client.paymentDueDate)}</span></div>
+                        <div class="meta"><span>Último: ${dateText(client.lastPaymentDate)}</span></div>
+                      </td>
+                      <td>
+                        <div class="row-actions">
+                          <button class="btn" type="button" data-edit-client-account="${client.id}" data-icon="edit">Editar</button>
+                          <button class="btn success" type="button" data-client-paid="${client.id}" data-icon="check">Paga</button>
+                          <button class="btn" type="button" data-client-pending="${client.id}" data-icon="bell">Pendente</button>
+                          <button class="btn danger" type="button" data-client-late="${client.id}" data-icon="x">Atrasada</button>
+                          ${client.loginBlocked
+                            ? `<button class="btn accent" type="button" data-client-unblock="${client.id}" data-icon="check">Liberar</button>`
+                            : `<button class="btn danger" type="button" data-client-block="${client.id}" data-icon="x">Bloquear</button>`}
+                          <button class="btn" type="button" data-copy-client-access="${client.id}" data-icon="download">Copiar</button>
+                          <button class="btn icon danger" type="button" title="Excluir" data-delete-client-account="${client.id}" data-icon="trash"></button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join("") || `<tr><td colspan="7">${emptyInline("Nenhum cliente criado.")}</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      `;
+    }
+
+    function subscriptionChip(status) {
+      const labels = { pago: "Pago", pendente: "Pendente", atrasado: "Atrasado" };
+      return statusChip(labels[status] || status || "Pendente");
+    }
+
+    function subscriptionOptions(selected = "pendente") {
+      const labels = { pago: "Pago", pendente: "Pendente", atrasado: "Atrasado" };
+      return Object.entries(labels).map(([value, label]) => `<option value="${value}" ${value === selected ? "selected" : ""}>${label}</option>`).join("");
+    }
+
+    function clientAccountForm(client = {}) {
+      const slug = client.slug || slugify(client.businessName || "");
+      return `
+        <div class="form-grid">
+          ${field("Nome do negócio", "businessName", client.businessName, "text", true)}
+          ${field("Nome do responsável", "responsibleName", client.responsibleName, "text", true)}
+          ${field("CPF ou CNPJ", "document", client.document)}
+          ${field("E-mail", "email", client.email, "email", true)}
+          ${field("WhatsApp", "whatsapp", client.whatsapp)}
+          ${field("Usuário de acesso", "accessUsername", client.accessUsername, "text", true)}
+          ${field(client.id ? "Nova senha de acesso (opcional)" : "Senha de acesso", "password", "", "text", !client.id)}
+          ${field("Slug do link", "slug", slug)}
+          ${field("Valor mensal", "monthlyValue", client.monthlyValue || 0, "number", true)}
+          <div class="field"><label>Status da assinatura</label><select name="subscriptionStatus">${subscriptionOptions(client.subscriptionStatus || "pendente")}</select></div>
+          ${field("Data combinada de pagamento", "paymentDueDate", client.paymentDueDate, "date")}
+          ${field("Data do último pagamento", "lastPaymentDate", client.lastPaymentDate, "date")}
+          ${area("Observações", "notes", client.notes, "wide")}
+        </div>
+      `;
+    }
+
     function renderClients() {
+      if (isAdmin()) return renderPlatformClients();
       return `
         ${moduleHead("Clientes", "Cadastro, contatos, projetos vinculados, pagamentos e histórico.", canManage() ? '<button class="btn accent" type="button" data-open="client" data-icon="plus">Novo cliente</button>' : "")}
         <div class="grid three">
@@ -3454,7 +3755,7 @@
             `;
           }).join("") || emptyBlock("Nenhum funcionário cadastrado.")}
         </div>
-        ${isAdmin() ? `<section class="panel" style="margin-top:14px">${userAdminPanel()}</section>` : ""}
+        ${isAdmin() ? `<section class="panel" style="margin-top:14px">${clientAdminShortcut()}</section>` : ""}
       `;
     }
 
@@ -3540,7 +3841,7 @@
             </div>
           </div>
           <div class="panel">
-            ${isAdmin() ? userAdminPanel() : collaboratorSettings()}
+            ${isAdmin() ? clientAdminShortcut() : collaboratorSettings()}
           </div>
         </div>
       `;
@@ -3576,6 +3877,19 @@
               `).join("")}
             </tbody>
           </table>
+        </div>
+      `;
+    }
+
+    function clientAdminShortcut() {
+      return `
+        <div class="section-title"><h2>Clientes Nexor</h2><span class="chip gold">${platformClients.length} contas</span></div>
+        <div class="list">
+          <div class="list-row"><strong>Criar clientes e logins</strong><span class="muted">Cada cliente recebe link, usuário, senha e base zerada.</span></div>
+          <div class="row-actions">
+            <button class="btn accent" type="button" data-module="clients" data-icon="users">Abrir clientes</button>
+            <button class="btn" type="button" data-open-client-account data-icon="plus">Criar cliente</button>
+          </div>
         </div>
       `;
     }
@@ -3853,6 +4167,15 @@
       }));
       $("#profileSettingsForm")?.addEventListener("submit", saveProfileSettings);
       $("#calendarSettingsForm")?.addEventListener("submit", saveCalendarSettings);
+      $$("[data-open-client-account]").forEach(button => button.addEventListener("click", () => openClientAccountModal()));
+      $$("[data-edit-client-account]").forEach(button => button.addEventListener("click", () => openClientAccountModal(button.dataset.editClientAccount)));
+      $$("[data-delete-client-account]").forEach(button => button.addEventListener("click", () => deleteClientAccount(button.dataset.deleteClientAccount)));
+      $$("[data-client-paid]").forEach(button => button.addEventListener("click", () => setClientSubscription(button.dataset.clientPaid, "pago")));
+      $$("[data-client-pending]").forEach(button => button.addEventListener("click", () => setClientSubscription(button.dataset.clientPending, "pendente")));
+      $$("[data-client-late]").forEach(button => button.addEventListener("click", () => setClientSubscription(button.dataset.clientLate, "atrasado")));
+      $$("[data-client-block]").forEach(button => button.addEventListener("click", () => setClientLoginBlock(button.dataset.clientBlock, true)));
+      $$("[data-client-unblock]").forEach(button => button.addEventListener("click", () => setClientLoginBlock(button.dataset.clientUnblock, false)));
+      $$("[data-copy-client-access]").forEach(button => button.addEventListener("click", () => copyClientAccess(button.dataset.copyClientAccess)));
       $("#createUserForm")?.addEventListener("submit", createUser);
       $$("[data-reveal-password]").forEach(button => button.addEventListener("click", () => revealUserPassword(button.dataset.revealPassword)));
       $$("[data-change-password-user]").forEach(button => button.addEventListener("click", () => changeUserPassword(button.dataset.changePasswordUser)));
@@ -4423,6 +4746,205 @@
       db.calendar.lastSync = db.calendar.connected ? new Date().toISOString() : "";
       logActivity(db.calendar.connected ? "Google Calendar configurado" : "Google Calendar desconectado");
       saveDb();
+      renderApp();
+    }
+
+    function openClientAccountModal(id = "") {
+      const client = platformClients.find(item => item.id === id) || {};
+      $("#modalRoot").innerHTML = `
+        <dialog class="modal">
+          <form id="clientAccountForm">
+            <div class="modal-head">
+              <div>
+                <h2>${id ? "Editar cliente" : "Criar cliente"}</h2>
+                <p class="muted">Conta, assinatura, login e link individual.</p>
+              </div>
+              <button class="btn icon" type="button" data-close-modal title="Fechar" data-icon="x"></button>
+            </div>
+            ${clientAccountForm(client)}
+            <div class="modal-actions">
+              <button class="btn" type="button" data-close-modal>Cancelar</button>
+              <button class="btn accent" type="submit" data-icon="check">Salvar cliente</button>
+            </div>
+          </form>
+        </dialog>
+      `;
+      const dialog = $("#modalRoot dialog");
+      dialog.showModal();
+      applyIcons(dialog);
+      $$("[data-close-modal]", dialog).forEach(button => button.addEventListener("click", () => dialog.close()));
+      dialog.addEventListener("close", () => $("#modalRoot").innerHTML = "");
+      $("#clientAccountForm").addEventListener("submit", event => saveClientAccount(event, id));
+    }
+
+    function clientPayloadFromForm(formData, existing = {}) {
+      const businessName = String(formData.get("businessName") || "").trim();
+      const responsibleName = String(formData.get("responsibleName") || "").trim();
+      const email = String(formData.get("email") || "").trim().toLowerCase();
+      const accessUsername = String(formData.get("accessUsername") || "").trim().toLowerCase();
+      const slug = slugify(formData.get("slug") || businessName);
+      return {
+        id: existing.id || "",
+        authUserId: existing.authUserId || "",
+        businessName,
+        responsibleName,
+        document: String(formData.get("document") || "").trim(),
+        email,
+        whatsapp: String(formData.get("whatsapp") || "").trim(),
+        accessUsername,
+        password: String(formData.get("password") || ""),
+        plainPassword: String(formData.get("password") || existing.plainPassword || ""),
+        monthlyValue: Number(formData.get("monthlyValue") || 0),
+        subscriptionStatus: String(formData.get("subscriptionStatus") || "pendente"),
+        paymentDueDate: String(formData.get("paymentDueDate") || ""),
+        lastPaymentDate: String(formData.get("lastPaymentDate") || ""),
+        notes: String(formData.get("notes") || "").trim(),
+        loginBlocked: Boolean(existing.loginBlocked),
+        slug
+      };
+    }
+
+    async function saveClientAccount(event, id = "") {
+      event.preventDefault();
+      const existing = platformClients.find(item => item.id === id) || {};
+      const payload = clientPayloadFromForm(new FormData(event.currentTarget), existing);
+      if (!payload.businessName || !payload.responsibleName || !payload.email || !payload.accessUsername || (!id && !payload.password)) {
+        alert("Preencha negócio, responsável, e-mail, usuário e senha.");
+        return;
+      }
+
+      if (cloudEnabled() && cloudSession?.access_token) {
+        try {
+          await cloudAdminAction(id ? "update_client" : "create_client", payload);
+          await loadCloudClients();
+          accessNotice = `${id ? "Cliente atualizado" : "Cliente criado"}: ${payload.businessName}`;
+          $("#modalRoot dialog")?.close();
+          renderApp();
+        } catch (error) {
+          console.error(error);
+          alert(error.message || "Não foi possível salvar o cliente no Supabase.");
+        }
+        return;
+      }
+
+      await saveLocalClientAccount(payload, id);
+      $("#modalRoot dialog")?.close();
+      renderApp();
+    }
+
+    async function saveLocalClientAccount(payload, id = "") {
+      const duplicate = platformClients.find(client => client.id !== id && [client.email, client.accessUsername, client.slug].some(value => [payload.email, payload.accessUsername, payload.slug].includes(value)));
+      if (duplicate) {
+        alert("Já existe cliente com este e-mail, usuário ou slug.");
+        return;
+      }
+      let authUserId = payload.authUserId;
+      if (!id) {
+        authUserId = uid("user");
+        users.push({
+          id: authUserId,
+          name: payload.responsibleName,
+          email: payload.email,
+          passwordHash: await sha256(payload.password),
+          plainPassword: payload.password,
+          gender: "neutral",
+          role: "cliente",
+          status: "Ativo",
+          createdAt: today(),
+          lastLogin: ""
+        });
+        localStorage.setItem(dbKey(authUserId), JSON.stringify(createDefaultDb(false)));
+      } else {
+        users = users.map(user => user.id === authUserId ? {
+          ...user,
+          name: payload.responsibleName,
+          email: payload.email,
+          ...(payload.password ? { passwordHash: null, plainPassword: payload.password } : {})
+        } : user);
+        if (payload.password) {
+          const target = users.find(user => user.id === authUserId);
+          if (target) target.passwordHash = await sha256(payload.password);
+        }
+      }
+      const record = {
+        ...payload,
+        id: id || uid("client_account"),
+        authUserId,
+        plainPassword: payload.password || payload.plainPassword,
+        createdAt: payload.createdAt || today()
+      };
+      platformClients = id ? platformClients.map(client => client.id === id ? record : client) : [record, ...platformClients];
+      saveUsers();
+      savePlatformClients();
+      accessNotice = `${id ? "Cliente atualizado" : "Cliente criado"}: ${record.businessName}`;
+    }
+
+    async function setClientSubscription(id, status) {
+      const client = platformClients.find(item => item.id === id);
+      if (!client) return;
+      const patch = {
+        clientId: id,
+        subscriptionStatus: status,
+        lastPaymentDate: status === "pago" ? today() : client.lastPaymentDate,
+        loginBlocked: status === "pago" ? false : client.loginBlocked
+      };
+      if (cloudEnabled() && cloudSession?.access_token) {
+        await cloudAdminAction("set_client_subscription", patch);
+        await loadCloudClients();
+      } else {
+        Object.assign(client, patch);
+        savePlatformClients();
+      }
+      accessNotice = `Mensalidade marcada como ${status}: ${client.businessName}`;
+      renderApp();
+    }
+
+    async function setClientLoginBlock(id, blocked) {
+      const client = platformClients.find(item => item.id === id);
+      if (!client) return;
+      if (cloudEnabled() && cloudSession?.access_token) {
+        await cloudAdminAction("set_client_login", { clientId: id, loginBlocked: blocked });
+        await loadCloudClients();
+      } else {
+        client.loginBlocked = blocked;
+        savePlatformClients();
+      }
+      accessNotice = `${blocked ? "Login bloqueado" : "Login liberado"}: ${client.businessName}`;
+      renderApp();
+    }
+
+    async function deleteClientAccount(id) {
+      const client = platformClients.find(item => item.id === id);
+      if (!client) return;
+      if (!confirm(`Excluir o cliente ${client.businessName} e o login vinculado?`)) return;
+      if (cloudEnabled() && cloudSession?.access_token) {
+        await cloudAdminAction("delete_client", { clientId: id });
+        await loadCloudClients();
+      } else {
+        platformClients = platformClients.filter(item => item.id !== id);
+        users = users.filter(user => user.id !== client.authUserId);
+        localStorage.removeItem(dbKey(client.authUserId));
+        saveUsers();
+        savePlatformClients();
+      }
+      accessNotice = `Cliente excluído: ${client.businessName}`;
+      renderApp();
+    }
+
+    async function copyClientAccess(id) {
+      const client = platformClients.find(item => item.id === id);
+      if (!client) return;
+      const text = [
+        `Link: ${clientAccessUrl(client)}`,
+        `Usuário: ${client.accessUsername}`,
+        `Senha: ${client.plainPassword || "senha não salva, redefina no painel"}`
+      ].join("\n");
+      try {
+        await navigator.clipboard.writeText(text);
+        accessNotice = `Acesso copiado: ${client.businessName}`;
+      } catch {
+        prompt("Copie os dados de acesso:", text);
+      }
       renderApp();
     }
 

@@ -15,11 +15,11 @@ Este pacote e estatico. A Vercel consegue publicar diretamente a partir de `inde
 
 A pasta `supabase/migrations` contem a estrutura inicial de banco com RLS por usuario. Use em um projeto Supabase dedicado ao Nexor.
 
-Com Supabase configurado, os logins deixam de ficar presos ao navegador: o admin cria usuarios no painel do Nexor, eles entram pelo Supabase Auth e cada usuario recebe seu proprio banco de dados pelo `owner_id`.
+Com Supabase configurado, os logins deixam de ficar presos ao navegador: o admin cria clientes no painel **Clientes Nexor**, cada cliente recebe um usuario de acesso, senha, link `/cliente/nome-do-negocio` e uma base zerada pelo `owner_id`.
 
 Importante: desde abril de 2026, novos projetos Supabase podem nao expor tabelas publicas automaticamente na Data API. A migration ja inclui `GRANT` para `authenticated` e RLS nas tabelas.
 
-Publique tambem a Edge Function `supabase/functions/nexor-admin-user`; ela e responsavel por criar usuarios, alterar senhas, ativar/inativar e remover acessos com seguranca.
+As APIs em `api/admin-client.js` e `api/resolve-client-login.js` rodam no servidor da Vercel. Elas criam clientes no Supabase Auth, resolvem o usuario de acesso e aplicam bloqueio por assinatura.
 
 ## Variaveis
 
