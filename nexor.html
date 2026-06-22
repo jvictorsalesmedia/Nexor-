@@ -4270,12 +4270,12 @@
           <div class="card-head">
             <div>
               <strong>${escapeHtml(lead.name || lead.business || "Lead sem nome")}</strong>
-              <div class="meta">${escapeHtml(lead.contact || "Sem responsÃ¡vel")} â€¢ ${escapeHtml(lead.source || "Origem nÃ£o informada")}</div>
+              <div class="meta">${escapeHtml(lead.contact || "Sem responsavel")} • ${escapeHtml(lead.source || "Origem nao informada")}</div>
             </div>
             ${statusChip(lead.stage || "Novo")}
           </div>
           <div class="meta"><span>${money(lead.value || 0)}</span><span>${dateText(lead.nextDate)}</span></div>
-          <p class="muted">${escapeHtml(lead.nextAction || lead.notes || "Sem prÃ³xima aÃ§Ã£o.")}</p>
+          <p class="muted">${escapeHtml(lead.nextAction || lead.notes || "Sem proxima acao.")}</p>
           <div class="row-actions">
             ${lead.whatsapp ? `<a class="btn" href="https://wa.me/${String(lead.whatsapp).replace(/\\D/g, "")}" target="_blank" rel="noreferrer" data-icon="users">WhatsApp</a>` : ""}
             <button class="btn icon" type="button" title="Editar" data-edit="lead" data-id="${lead.id}" data-icon="edit"></button>
