@@ -21,7 +21,7 @@ module.exports = async function handler(req, res) {
       `/nexor_clients?or=(email.eq.${encodeURIComponent(payload.email)},access_username.eq.${encodeURIComponent(payload.accessUsername)})&select=id&limit=1`
     );
     if (existingClients.length) {
-      res.status(409).json({ error: "JÃ¡ existe uma conta com este e-mail ou usuÃ¡rio de acesso." });
+      res.status(409).json({ error: "Ja existe uma conta com este e-mail ou usuario de acesso." });
       return;
     }
 
@@ -43,9 +43,9 @@ module.exports = async function handler(req, res) {
 
     res.status(200).json({ request: rows[0] });
   } catch (error) {
-    const message = error.message || "NÃ£o foi possÃ­vel enviar o prÃ©-cadastro.";
+    const message = error.message || "Nao foi possivel enviar o pre-cadastro.";
     const status = /duplicate|unique|nexor_signup_requests_pending_email/i.test(message) ? 409 : 400;
-    res.status(status).json({ error: status === 409 ? "JÃ¡ existe um prÃ©-cadastro pendente para este e-mail." : message });
+    res.status(status).json({ error: status === 409 ? "Ja existe um pre-cadastro pendente para este e-mail." : message });
   }
 };
 
@@ -67,19 +67,19 @@ function normalizeSignupRequest(body) {
 
 function validateSignupRequest(payload) {
   if (!payload.responsibleName || !payload.email || !payload.password) {
-    throw new Error("Informe nome do responsÃ¡vel, e-mail e senha.");
+    throw new Error("Informe nome do responsavel, e-mail e senha.");
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) {
-    throw new Error("Informe um e-mail vÃ¡lido.");
+    throw new Error("Informe um e-mail valido.");
   }
   if (payload.password.length < 6) {
     throw new Error("Use uma senha com pelo menos 6 caracteres.");
   }
   if (!payload.photoDataUrl || !/^data:image\/(png|jpe?g|webp);base64,/i.test(payload.photoDataUrl)) {
-    throw new Error("Envie uma foto do responsÃ¡vel.");
+    throw new Error("Envie uma foto do responsavel.");
   }
   if (payload.photoDataUrl.length > 1800000) {
-    throw new Error("A foto estÃ¡ muito grande. Envie uma imagem menor.");
+    throw new Error("A foto esta muito grande. Envie uma imagem menor.");
   }
 }
 
