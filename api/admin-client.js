@@ -64,7 +64,7 @@ async function createTeamUser(supabaseUrl, serviceKey, body, callerId) {
     }
   });
   const user = auth.user || auth;
-  if (!user?.id) throw new Error("UsuÃ¡rio nÃ£o foi criado no Supabase Auth.");
+  if (!user?.id) throw new Error("Usuario nao foi criado no Supabase Auth.");
 
   const profile = await upsertProfile(supabaseUrl, serviceKey, {
     id: user.id,
@@ -97,7 +97,7 @@ async function updateTeamUserPassword(supabaseUrl, serviceKey, body, callerId) {
 
 async function setTeamUserStatus(supabaseUrl, serviceKey, body, callerId) {
   const userId = String(body.userId || "");
-  if (!userId) throw new Error("UsuÃ¡rio nÃ£o informado.");
+  if (!userId) throw new Error("Usuario nao informado.");
 
   const protectedError = await mutableUserError(supabaseUrl, serviceKey, userId, callerId);
   if (protectedError) throw new Error(protectedError);
@@ -109,7 +109,7 @@ async function setTeamUserStatus(supabaseUrl, serviceKey, body, callerId) {
 
 async function deleteTeamUser(supabaseUrl, serviceKey, body, callerId) {
   const userId = String(body.userId || "");
-  if (!userId) throw new Error("UsuÃ¡rio nÃ£o informado.");
+  if (!userId) throw new Error("Usuario nao informado.");
 
   const protectedError = await mutableUserError(supabaseUrl, serviceKey, userId, callerId);
   if (protectedError) throw new Error(protectedError);
@@ -133,8 +133,8 @@ async function approveSignupRequest(supabaseUrl, serviceKey, body, callerId) {
     serviceKey,
     `/nexor_signup_requests?id=eq.${encodeURIComponent(body.requestId || "")}&select=*`
   );
-  if (!request) throw new Error("PrÃ©-cadastro nÃ£o encontrado.");
-  if (request.status !== "pendente") throw new Error("Este prÃ©-cadastro jÃ¡ foi analisado.");
+  if (!request) throw new Error("Pre-cadastro nao encontrado.");
+  if (request.status !== "pendente") throw new Error("Este pre-cadastro ja foi analisado.");
 
   const businessName = request.business_name || `Conta ${request.responsible_name || request.email.split("@")[0]}`;
   const approved = await createClientAccount(supabaseUrl, serviceKey, {
@@ -149,7 +149,7 @@ async function approveSignupRequest(supabaseUrl, serviceKey, body, callerId) {
     subscriptionStatus: body.subscriptionStatus || "pendente",
     paymentDueDate: body.paymentDueDate || "",
     lastPaymentDate: body.lastPaymentDate || "",
-    notes: [body.notes, "Criado a partir de prÃ©-cadastro aprovado."].filter(Boolean).join("\n"),
+    notes: [body.notes, "Criado a partir de pre-cadastro aprovado."].filter(Boolean).join("\n"),
     slug: body.slug || `${businessName}-${String(request.id).slice(0, 8)}`
   }, callerId);
 
@@ -171,7 +171,7 @@ async function approveSignupRequest(supabaseUrl, serviceKey, body, callerId) {
 
 async function rejectSignupRequest(supabaseUrl, serviceKey, body, callerId) {
   const requestId = String(body.requestId || "");
-  if (!requestId) throw new Error("PrÃ©-cadastro nÃ£o informado.");
+  if (!requestId) throw new Error("Pre-cadastro nao informado.");
   const request = await restPatch(
     supabaseUrl,
     serviceKey,
@@ -199,11 +199,11 @@ function normalizeTeamUserPayload(body) {
 }
 
 async function mutableUserError(supabaseUrl, serviceKey, userId, callerId) {
-  if (userId === callerId) return "O administrador atual nÃ£o pode alterar o prÃ³prio acesso por aqui.";
+  if (userId === callerId) return "O administrador atual nao pode alterar o proprio acesso por aqui.";
   const profile = await restSingle(supabaseUrl, serviceKey, `/nexor_profiles?id=eq.${encodeURIComponent(userId)}&select=id,email,app_role`);
-  if (!profile) return "UsuÃ¡rio nÃ£o encontrado.";
+  if (!profile) return "Usuario nao encontrado.";
   if (String(profile.email || "").toLowerCase() === mainAdminEmail || profile.app_role === "admin") {
-    return "O acesso do administrador principal Ã© protegido.";
+    return "O acesso do administrador principal e protegido.";
   }
   return "";
 }
