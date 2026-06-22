@@ -753,6 +753,16 @@
       overflow-wrap: anywhere;
     }
 
+    .signup-photo {
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      margin: 12px 0 6px;
+    }
+
     .quick-grid {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1812,6 +1822,7 @@
     .app-tabs button[data-module="tasks"] { --tab-accent: #f0c75e; }
     .app-tabs button[data-module="projects"] { --tab-accent: #9eb7ff; }
     .app-tabs button[data-module="kanban"] { --tab-accent: #72d8ff; }
+    .app-tabs button[data-module="leads"] { --tab-accent: #86efac; }
     .app-tabs button[data-module="planner"] { --tab-accent: #f2f2f2; }
     .app-tabs button[data-module="eisenhower"] { --tab-accent: #ff7a7a; }
     .app-tabs button[data-module="clients"] { --tab-accent: #9ee7d6; }
@@ -2115,7 +2126,7 @@
 <body>
   <div id="authView" class="auth-view">
     <form id="loginForm" class="auth-card" autocomplete="on">
-      <img class="auth-logo" src="nexor-logo-transparent.png" alt="Nexor" />
+      <img class="auth-logo" src="/nexor-logo-transparent.png" alt="Nexor" />
       <p id="loginContextText">Organize sua rotina, seus projetos e seus resultados em um só lugar.</p>
       <div class="field">
         <label id="loginIdentifierLabel" for="email">Usuário ou e-mail</label>
@@ -2127,6 +2138,7 @@
       </div>
       <div class="auth-actions">
         <button class="btn primary" type="submit" data-icon="log-in">Entrar</button>
+        <button id="signupRequestBtn" class="btn" type="button" data-icon="plus">Solicitar acesso</button>
       </div>
       <div id="authError" class="auth-error" role="alert"></div>
     </form>
@@ -2135,7 +2147,7 @@
   <div id="appShell" class="shell hidden">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark"><img src="nexor-logo-transparent.png" alt="Nexor" /></div>
+        <div class="brand-mark"><img src="/nexor-logo-transparent.png" alt="Nexor" /></div>
         <div>
           <strong>Nexor</strong>
           <span>Centro de gestão</span>
@@ -2185,6 +2197,7 @@
     const statusOptions = ["A fazer", "Em andamento", "Aguardando aprovação", "Revisão", "Concluído", "Cancelado"];
     const priorityOptions = ["Baixa", "Média", "Alta", "Urgente"];
     const kanbanColumns = ["Ideias", "A fazer", "Em produção", "Em revisão", "Aguardando cliente", "Aprovado", "Finalizado"];
+    const leadStages = ["Novo", "Contato feito", "Reunião marcada", "Proposta enviada", "Negociação", "Ganho", "Perdido"];
     const projectStatus = ["Planejamento", "Em produção", "Em aprovação", "Pausado", "Finalizado", "Cancelado"];
     const weekDays = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
     const quadrants = [
@@ -2206,6 +2219,7 @@
       ["tasks", "Tarefas", "check-square"],
       ["projects", "Projetos", "folder-kanban"],
       ["kanban", "Kanban", "columns"],
+      ["leads", "Leads", "target"],
       ["planner", "Planner semanal", "calendar-days"],
       ["eisenhower", "Matriz de Eisenhower", "grid-2x2"],
       ["clients", "Clientes", "users"],
@@ -2245,11 +2259,13 @@
       "x": '<path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>',
       "eye": '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle>',
       "download": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5"></path><path d="M12 15V3"></path>',
-      "file-text": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M16 13H8"></path><path d="M16 17H8"></path><path d="M10 9H8"></path>'
+      "file-text": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M16 13H8"></path><path d="M16 17H8"></path><path d="M10 9H8"></path>',
+      "target": '<circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.6"></circle><path d="M12 3v3"></path><path d="M21 12h-3"></path><path d="M12 21v-3"></path><path d="M3 12h3"></path>'
     };
 
     let users = [];
     let platformClients = [];
+    let signupRequests = [];
     let currentUser = null;
     let db = null;
     let activeModule = "dashboard";
@@ -2519,6 +2535,35 @@
       platformClients = (rows || []).map(client => cloudClientToAccount(client, passwords.get(client.auth_user_id) || ""));
     }
 
+    function cloudSignupRequestToItem(request) {
+      return {
+        id: request.id,
+        businessName: request.business_name || "",
+        responsibleName: request.responsible_name || "",
+        document: request.document || "",
+        email: request.email || "",
+        whatsapp: request.whatsapp || "",
+        accessUsername: request.access_username || "",
+        photoDataUrl: request.responsible_photo_data_url || "",
+        status: request.status || "pendente",
+        decisionNote: request.decision_note || "",
+        createdAt: request.created_at ? String(request.created_at).slice(0, 10) : ""
+      };
+    }
+
+    async function loadSignupRequests() {
+      if (!cloudEnabled() || !cloudSession?.access_token || currentUser?.role !== "admin") {
+        signupRequests = [];
+        return;
+      }
+      try {
+        const result = await cloudAdminAction("list_signup_requests");
+        signupRequests = (result?.requests || []).map(cloudSignupRequestToItem);
+      } catch (error) {
+        console.warn("Não foi possível carregar pré-cadastros.", error);
+      }
+    }
+
     async function cloudAdminAction(action, payload = {}) {
       const body = JSON.stringify({ action, ...payload });
       if (location.protocol !== "file:") {
@@ -2532,7 +2577,8 @@
         });
         if (response.ok) return response.json().catch(() => null);
         const message = await response.text().catch(() => "");
-        throw new Error(message || `Erro API ${response.status}`);
+        const parsed = parseJson(message);
+        throw new Error(parsed?.error || message || `Erro API ${response.status}`);
       }
       return cloudFetch("/functions/v1/nexor-admin-user", {
         method: "POST",
@@ -2730,6 +2776,7 @@
         notificationsReadAt: "",
         tasks: [],
         projects: [],
+        leads: [],
         clients: [],
         finance: [],
         productions: [],
@@ -2748,6 +2795,10 @@
       const projectB = { id: uid("project"), name: "Rotina Comercial", clientId: clientB.id, description: "CRM, acompanhamento de leads e relatórios semanais.", startDate: addDays(-9), dueDate: addDays(30), status: "Planejamento", owner: "JV Sales", progress: 28, budget: 7200, files: "", history: ["Kickoff realizado"] };
       base.clients = [clientA, clientB];
       base.projects = [projectA, projectB];
+      base.leads = [
+        { id: uid("lead"), name: "Clínica Horizonte", business: "Clínica Horizonte", contact: "Renata Lima", email: "renata@clinicahorizonte.com", whatsapp: "5511999992010", source: "Indicação", value: 4200, stage: "Contato feito", owner: "JV Sales", nextAction: "Enviar proposta premium", nextDate: addDays(1), notes: "Interesse em organização de agenda e financeiro.", createdAt: today() },
+        { id: uid("lead"), name: "Barbearia Norte", business: "Barbearia Norte", contact: "Diego Ramos", email: "diego@barbearianorte.com", whatsapp: "552199991122", source: "Instagram", value: 1800, stage: "Novo", owner: "JV Sales", nextAction: "Primeira ligação", nextDate: today(), notes: "Precisa organizar clientes e produção de conteúdo.", createdAt: today() }
+      ];
       base.tasks = [
         { id: uid("task"), title: "Finalizar roteiro dos Reels", description: "Fechar roteiro e checklist de captação.", category: "Produção", subcategory: "Vídeo", projectId: projectA.id, clientId: clientA.id, assignee: "user_admin_main", dueDate: addDays(2), priority: "Alta", status: "Em andamento", kanban: "Em produção", quadrant: "do", weekday: "Segunda", tags: ["Roteiro", "Social"], checklist: [{ text: "Gancho", done: true }, { text: "CTA", done: false }], comments: [], createdAt: today(), completedAt: "", attachmentName: "" },
         { id: uid("task"), title: "Revisar landing page", description: "Ajustar copy principal e prova social.", category: "Sites", subcategory: "Landing page", projectId: projectA.id, clientId: clientA.id, assignee: "user_admin_main", dueDate: addDays(5), priority: "Urgente", status: "Revisão", kanban: "Em revisão", quadrant: "do", weekday: "Quarta", tags: ["Web"], checklist: [], comments: [], createdAt: today(), completedAt: "", attachmentName: "" },
@@ -2796,6 +2847,7 @@
       }
       db.tasks ||= [];
       db.projects ||= [];
+      db.leads ||= [];
       db.clients ||= [];
       db.finance ||= [];
       db.productions ||= [];
@@ -2866,6 +2918,7 @@
       db ||= {};
       db.tasks ||= [];
       db.projects ||= [];
+      db.leads ||= [];
       db.clients ||= [];
       db.finance ||= [];
       db.productions ||= [];
@@ -2895,6 +2948,7 @@
       applyIcons();
       applyLoginContext();
       $("#loginForm").addEventListener("submit", handleLogin);
+      $("#signupRequestBtn")?.addEventListener("click", openSignupRequestModal);
       $("#logoutBtn").addEventListener("click", logout);
       $("#themeBtn").addEventListener("click", toggleTheme);
       $("#notifyBtn").addEventListener("click", () => {
@@ -2950,6 +3004,113 @@
       $("#loginContextText").textContent = "Organize sua rotina, seus projetos e seus resultados em um só lugar.";
       $("#loginIdentifierLabel").textContent = "Usuário ou e-mail";
       $("#email").placeholder = "E-mail do administrador ou usuário do cliente";
+    }
+
+    function openSignupRequestModal() {
+      if (location.protocol === "file:") {
+        alert("O pré-cadastro funciona na URL publicada da Vercel.");
+        return;
+      }
+      const modalRoot = $("#modalRoot");
+      modalRoot.innerHTML = `
+        <dialog>
+          <form class="modal" id="signupRequestForm">
+            <div class="modal-head">
+              <div>
+                <h2>Solicitar acesso</h2>
+                <p class="muted">Envie seus dados. O administrador principal aprova ou reprova antes do login ser liberado.</p>
+              </div>
+              <button class="btn icon" type="button" data-close-modal title="Fechar" data-icon="x"></button>
+            </div>
+            <div class="form-grid">
+              ${field("Nome do negócio", "businessName")}
+              ${field("Nome do responsável", "responsibleName", "", "text", true)}
+              ${field("CPF ou CNPJ", "document")}
+              ${field("E-mail", "email", "", "email", true)}
+              ${field("WhatsApp", "whatsapp")}
+              ${field("Usuário de acesso desejado", "accessUsername")}
+              ${field("Senha de acesso", "password", "", "password", true)}
+              <div class="field wide">
+                <label>Foto do responsável</label>
+                <input name="photo" type="file" accept="image/png,image/jpeg,image/webp" required>
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button class="btn" type="button" data-close-modal>Cancelar</button>
+              <button class="btn accent" type="submit" data-icon="check">Enviar pré-cadastro</button>
+            </div>
+          </form>
+        </dialog>
+      `;
+      applyIcons(modalRoot);
+      const dialog = $("dialog", modalRoot);
+      if (dialog.showModal) dialog.showModal();
+      $$("[data-close-modal]", modalRoot).forEach(button => button.addEventListener("click", closeModal));
+      $("#signupRequestForm").addEventListener("submit", submitSignupRequest);
+    }
+
+    async function submitSignupRequest(event) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const formData = new FormData(form);
+      const submit = form.querySelector("button[type='submit']");
+      const photo = formData.get("photo");
+      if (!photo?.name) {
+        alert("Envie uma foto do responsável.");
+        return;
+      }
+      submit.disabled = true;
+      submit.textContent = "Enviando...";
+      try {
+        const payload = {
+          businessName: String(formData.get("businessName") || "").trim(),
+          responsibleName: String(formData.get("responsibleName") || "").trim(),
+          document: String(formData.get("document") || "").trim(),
+          email: String(formData.get("email") || "").trim().toLowerCase(),
+          whatsapp: String(formData.get("whatsapp") || "").trim(),
+          accessUsername: String(formData.get("accessUsername") || "").trim().toLowerCase(),
+          password: String(formData.get("password") || ""),
+          photoDataUrl: await imageFileToDataUrl(photo)
+        };
+        const response = await fetch("/api/signup-request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Não foi possível enviar o pré-cadastro.");
+        closeModal();
+        $("#authError").textContent = "Pré-cadastro enviado. Aguarde a aprovação do administrador.";
+      } catch (error) {
+        alert(error.message || "Não foi possível enviar o pré-cadastro.");
+      } finally {
+        submit.disabled = false;
+        submit.textContent = "Enviar pré-cadastro";
+        applyIcons(form);
+      }
+    }
+
+    function imageFileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Não foi possível ler a foto."));
+        reader.onload = () => {
+          const image = new Image();
+          image.onerror = () => reject(new Error("Arquivo de imagem inválido."));
+          image.onload = () => {
+            const maxSide = 900;
+            const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(1, Math.round(image.width * scale));
+            canvas.height = Math.max(1, Math.round(image.height * scale));
+            const context = canvas.getContext("2d");
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL("image/jpeg", 0.78));
+          };
+          image.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
     }
 
     async function handleLogin(event) {
@@ -3008,7 +3169,10 @@
       await loadDb();
       if (cloudEnabled() && cloudSession?.access_token) {
         await loadCloudUsers();
-        if (user.role === "admin") await loadCloudClients();
+        if (user.role === "admin") {
+          await loadCloudClients();
+          await loadSignupRequests();
+        }
         const refreshedUser = users.find(item => item.id === user.id);
         currentUser = refreshedUser ? { ...user, ...refreshedUser, clientAccount: user.clientAccount } : user;
       }
@@ -3026,6 +3190,7 @@
       db = null;
       cloudSession = null;
       cloudWorkspaceRecordId = "";
+      signupRequests = [];
       $("#appShell").classList.add("hidden");
       $("#authView").classList.remove("hidden");
       $("#password").value = "";
@@ -3074,6 +3239,7 @@
         tasks: renderTasks,
         projects: renderProjects,
         kanban: renderKanban,
+        leads: renderLeads,
         planner: renderPlanner,
         eisenhower: renderEisenhower,
         clients: renderClients,
@@ -3363,6 +3529,33 @@
       `;
     }
 
+    function renderLeads() {
+      const openLeads = db.leads.filter(lead => !["Ganho", "Perdido"].includes(lead.stage));
+      const wonValue = sum(db.leads.filter(lead => lead.stage === "Ganho").map(lead => lead.value));
+      return `
+        ${moduleHead("Leads", "Funil comercial em Kanban para oportunidades, propostas e fechamentos.", canManage() ? '<button class="btn accent" type="button" data-open="lead" data-icon="plus">Novo lead</button>' : "")}
+        <div class="grid metrics" style="margin-bottom:14px">
+          ${metric("Leads abertos", openLeads.length, "em andamento", "target", "accent")}
+          ${metric("Propostas", db.leads.filter(lead => lead.stage === "Proposta enviada").length, "aguardando retorno", "file-text", "gold")}
+          ${metric("Ganho", money(wonValue), "valor fechado", "wallet", "success")}
+          ${metric("Próximas ações", db.leads.filter(lead => lead.nextDate && lead.nextDate <= addDays(3) && !["Ganho", "Perdido"].includes(lead.stage)).length, "até 3 dias", "bell", "danger")}
+        </div>
+        <div class="kanban-board">
+          ${leadStages.map(stage => {
+            const leads = db.leads.filter(lead => (lead.stage || "Novo") === stage);
+            return `
+              <section class="kanban-column" data-drop-lead="${stage}">
+                <div class="column-head"><h3>${stage}</h3><span class="chip">${leads.length}</span></div>
+                <div class="column-list">
+                  ${leads.map(leadCard).join("") || `<div class="empty">Sem leads</div>`}
+                </div>
+              </section>
+            `;
+          }).join("")}
+        </div>
+      `;
+    }
+
     function renderPlanner() {
       const hours = Array.from({ length: 13 }, (_, index) => `${String(index + 6).padStart(2, "0")}:00`);
       return `
@@ -3459,6 +3652,7 @@
     function renderAccounts() {
       const totalValue = sum(platformClients.map(client => client.monthlyValue));
       const blockedCount = platformClients.filter(client => !clientAccessState(client).allowed).length;
+      const pendingSignups = signupRequests.filter(request => request.status === "pendente");
       return `
         ${moduleHead("Usuários / acessos", "Crie contas para outras pessoas usarem o Nexor com interface e base próprias.", '<button class="btn accent" type="button" data-open-client-account data-icon="plus">Criar usuário</button>')}
         ${cloudAccessNotice()}
@@ -3466,9 +3660,10 @@
         <div class="grid metrics">
           ${metric("Usuários", platformClients.length, `${blockedCount} bloqueados`, "users", "accent")}
           ${metric("Mensalidades", money(totalValue), "valor mensal total", "wallet", "success")}
+          ${metric("Pré-cadastros", pendingSignups.length, "aguardando aprovação", "target", pendingSignups.length ? "gold" : "success")}
           ${metric("Pendentes", platformClients.filter(client => client.subscriptionStatus === "pendente").length, "dentro ou fora do prazo", "bell", "gold")}
-          ${metric("Atrasados", platformClients.filter(client => client.subscriptionStatus === "atrasado" || businessDaysLate(client.paymentDueDate) > 1).length, "revisar cobrança", "x", "danger")}
         </div>
+        ${signupRequestPanel(pendingSignups)}
         <section class="panel dashboard-row">
           <div class="section-title"><h2>Contas de acesso</h2><span class="chip gold">${platformClients.length} registros</span></div>
           <div class="table-wrap">
@@ -3530,6 +3725,42 @@
             </table>
           </div>
         </section>
+      `;
+    }
+
+    function signupRequestPanel(pendingSignups) {
+      if (!isAdmin()) return "";
+      return `
+        <section class="panel dashboard-row">
+          <div class="section-title">
+            <h2>Pré-cadastros</h2>
+            <span class="chip gold">${pendingSignups.length} pendentes</span>
+          </div>
+          <div class="grid three">
+            ${pendingSignups.map(signupRequestCard).join("") || emptyBlock("Nenhum pré-cadastro pendente.")}
+          </div>
+        </section>
+      `;
+    }
+
+    function signupRequestCard(request) {
+      return `
+        <article class="item-card">
+          <div class="card-head">
+            <div>
+              <strong>${escapeHtml(request.businessName || request.responsibleName || request.email)}</strong>
+              <div class="meta">${escapeHtml(request.responsibleName || "Responsável não informado")} • ${dateText(request.createdAt)}</div>
+            </div>
+            ${statusChip("Pendente")}
+          </div>
+          <img class="signup-photo" src="${escapeHtml(request.photoDataUrl)}" alt="Foto do responsável">
+          <div class="meta"><span>${escapeHtml(request.email)}</span><span>${escapeHtml(request.whatsapp || "Sem WhatsApp")}</span></div>
+          <div class="meta"><span>${escapeHtml(request.document || "CPF/CNPJ não informado")}</span><span>${escapeHtml(request.accessUsername || "Sem usuário")}</span></div>
+          <div class="row-actions">
+            <button class="btn accent" type="button" data-approve-signup="${request.id}" data-icon="check">Aprovar</button>
+            <button class="btn danger" type="button" data-reject-signup="${request.id}" data-icon="x">Reprovar</button>
+          </div>
+        </article>
       `;
     }
 
@@ -3850,6 +4081,13 @@
                   <button class="btn" type="submit" data-icon="check">Salvar perfil</button>
                 </div>
               </form>
+              <form id="ownPasswordForm" class="form-grid wide">
+                <div class="field"><label>Senha atual</label><input name="currentPassword" type="password" autocomplete="current-password" required></div>
+                <div class="field"><label>Nova senha</label><input name="newPassword" type="password" autocomplete="new-password" minlength="6" required></div>
+                <div class="wide row-actions">
+                  <button class="btn" type="submit" data-icon="check">Alterar minha senha</button>
+                </div>
+              </form>
               <div class="list-row">
                 <strong>Tema</strong>
                 <div class="row-actions">
@@ -4021,6 +4259,27 @@
           <div class="row-actions">
             <button class="btn icon" type="button" title="Editar" data-edit="task" data-id="${task.id}" data-icon="edit"></button>
             ${task.status !== "Concluído" ? `<button class="btn icon check-action" type="button" title="Concluir" data-complete-task="${task.id}">✓</button>` : ""}
+          </div>
+        </article>
+      `;
+    }
+
+    function leadCard(lead) {
+      return `
+        <article class="item-card draggable" draggable="true" data-lead-card="${lead.id}">
+          <div class="card-head">
+            <div>
+              <strong>${escapeHtml(lead.name || lead.business || "Lead sem nome")}</strong>
+              <div class="meta">${escapeHtml(lead.contact || "Sem responsÃ¡vel")} â€¢ ${escapeHtml(lead.source || "Origem nÃ£o informada")}</div>
+            </div>
+            ${statusChip(lead.stage || "Novo")}
+          </div>
+          <div class="meta"><span>${money(lead.value || 0)}</span><span>${dateText(lead.nextDate)}</span></div>
+          <p class="muted">${escapeHtml(lead.nextAction || lead.notes || "Sem prÃ³xima aÃ§Ã£o.")}</p>
+          <div class="row-actions">
+            ${lead.whatsapp ? `<a class="btn" href="https://wa.me/${String(lead.whatsapp).replace(/\\D/g, "")}" target="_blank" rel="noreferrer" data-icon="users">WhatsApp</a>` : ""}
+            <button class="btn icon" type="button" title="Editar" data-edit="lead" data-id="${lead.id}" data-icon="edit"></button>
+            ${canManage() ? `<button class="btn icon danger" type="button" title="Excluir" data-delete="lead" data-id="${lead.id}" data-icon="trash"></button>` : ""}
           </div>
         </article>
       `;
@@ -4201,7 +4460,10 @@
       $$("[data-client-block]").forEach(button => button.addEventListener("click", () => setClientLoginBlock(button.dataset.clientBlock, true)));
       $$("[data-client-unblock]").forEach(button => button.addEventListener("click", () => setClientLoginBlock(button.dataset.clientUnblock, false)));
       $$("[data-copy-client-access]").forEach(button => button.addEventListener("click", () => copyClientAccess(button.dataset.copyClientAccess)));
+      $$("[data-approve-signup]").forEach(button => button.addEventListener("click", () => openApproveSignupModal(button.dataset.approveSignup)));
+      $$("[data-reject-signup]").forEach(button => button.addEventListener("click", () => rejectSignupRequest(button.dataset.rejectSignup)));
       $("#createUserForm")?.addEventListener("submit", createUser);
+      $("#ownPasswordForm")?.addEventListener("submit", changeOwnPassword);
       $$("[data-reveal-password]").forEach(button => button.addEventListener("click", () => revealUserPassword(button.dataset.revealPassword)));
       $$("[data-change-password-user]").forEach(button => button.addEventListener("click", () => changeUserPassword(button.dataset.changePasswordUser)));
       $$("[data-activate-user]").forEach(button => button.addEventListener("click", () => setUserStatus(button.dataset.activateUser, "Ativo")));
@@ -4269,10 +4531,18 @@
       $$("[data-task-card]").forEach(card => {
         card.addEventListener("dragstart", event => {
           event.dataTransfer.setData("text/plain", card.dataset.taskCard);
+          event.dataTransfer.setData("application/x-nexor-kind", "task");
           event.dataTransfer.effectAllowed = "move";
         });
       });
-      $$("[data-drop-kanban], [data-drop-day], [data-drop-quadrant]").forEach(zone => {
+      $$("[data-lead-card]").forEach(card => {
+        card.addEventListener("dragstart", event => {
+          event.dataTransfer.setData("text/plain", card.dataset.leadCard);
+          event.dataTransfer.setData("application/x-nexor-kind", "lead");
+          event.dataTransfer.effectAllowed = "move";
+        });
+      });
+      $$("[data-drop-kanban], [data-drop-day], [data-drop-quadrant], [data-drop-lead]").forEach(zone => {
         zone.addEventListener("dragover", event => {
           event.preventDefault();
           zone.classList.add("drag-over");
@@ -4281,7 +4551,18 @@
         zone.addEventListener("drop", event => {
           event.preventDefault();
           zone.classList.remove("drag-over");
-          const task = db.tasks.find(item => item.id === event.dataTransfer.getData("text/plain"));
+          const id = event.dataTransfer.getData("text/plain");
+          const kind = event.dataTransfer.getData("application/x-nexor-kind") || "task";
+          if (zone.dataset.dropLead || kind === "lead") {
+            const lead = db.leads.find(item => item.id === id);
+            if (!lead || !zone.dataset.dropLead) return;
+            lead.stage = zone.dataset.dropLead;
+            logActivity(`Lead movido: ${lead.name}`);
+            saveDb();
+            renderApp();
+            return;
+          }
+          const task = db.tasks.find(item => item.id === id);
           if (!task) return;
           if (zone.dataset.dropKanban) {
             task.kanban = zone.dataset.dropKanban;
@@ -4405,6 +4686,7 @@
       return ({
         task: "tarefa",
         project: "projeto",
+        lead: "lead",
         client: "cliente",
         finance: "lançamento",
         production: "produção",
@@ -4417,6 +4699,7 @@
       return ({
         task: "Prioridade, status, responsável, checklist e vínculos.",
         project: "Cliente, prazo, orçamento, status e progresso.",
+        lead: "Contato, estágio comercial, valor e próxima ação.",
         client: "Contatos, WhatsApp, histórico e observações.",
         finance: "Receita, despesa, comprovante e status.",
         production: "Captação, edição, entrega, aprovação e arquivos.",
@@ -4429,6 +4712,7 @@
       const map = {
         task: db.tasks,
         project: db.projects,
+        lead: db.leads,
         client: db.clients,
         finance: db.finance,
         production: db.productions,
@@ -4442,6 +4726,7 @@
       const fields = {
         task: taskForm,
         project: projectForm,
+        lead: leadForm,
         client: clientForm,
         finance: financeForm,
         production: productionForm,
@@ -4510,6 +4795,23 @@
         ${field("Orçamento", "budget", item.budget || 0, "number")}
         ${field("Arquivos / links", "files", item.files, "url")}
         ${area("Descrição", "description", item.description, "wide")}
+      `;
+    }
+
+    function leadForm(item = {}) {
+      return `
+        ${field("Nome do lead", "name", item.name, "text", true)}
+        ${field("Negócio / empresa", "business", item.business)}
+        ${field("Responsável", "contact", item.contact)}
+        ${field("E-mail", "email", item.email, "email")}
+        ${field("WhatsApp com DDI", "whatsapp", item.whatsapp)}
+        ${field("Origem", "source", item.source || "Indicação")}
+        ${field("Valor potencial", "value", item.value || 0, "number")}
+        <div class="field"><label>Estágio</label><select name="stage">${options(leadStages, item.stage || "Novo")}</select></div>
+        ${field("Responsável interno", "owner", item.owner || currentUser.name)}
+        ${field("Próxima ação", "nextAction", item.nextAction)}
+        ${field("Data da próxima ação", "nextDate", item.nextDate || today(), "date")}
+        ${area("Observações", "notes", item.notes, "wide")}
       `;
     }
 
@@ -4631,6 +4933,7 @@
           attachmentName: file || existing?.attachmentName || ""
         }),
         project: () => ({ name: data.name, clientId: data.clientId, description: data.description, startDate: data.startDate, dueDate: data.dueDate, status: data.status, owner: data.owner, progress: clamp(data.progress, 0, 100), budget: Number(data.budget || 0), files: data.files, history: existing?.history || [] }),
+        lead: () => ({ name: data.name, business: data.business, contact: data.contact, email: data.email, whatsapp: data.whatsapp, source: data.source, value: Number(data.value || 0), stage: data.stage || "Novo", owner: data.owner, nextAction: data.nextAction, nextDate: data.nextDate, notes: data.notes, createdAt: existing?.createdAt || today() }),
         client: () => ({ name: data.name, company: data.company, phone: data.phone, whatsapp: data.whatsapp, email: data.email, address: data.address, notes: data.notes }),
         finance: () => ({ title: data.title, type: data.type, category: data.category, value: Number(data.value || 0), date: data.date, clientId: data.clientId, projectId: data.projectId, status: data.status, notes: data.notes, attachmentName: file || existing?.attachmentName || "" }),
         production: () => ({ type: data.type, clientId: data.clientId, description: data.description, responsible: data.responsible, captureDate: data.captureDate, editDate: data.editDate, deliveryDate: data.deliveryDate, status: data.status, fileLink: data.fileLink, approval: data.approval, notes: data.notes, checklist: splitLines(data.checklist) }),
@@ -4656,6 +4959,7 @@
       return {
         task: db.tasks,
         project: db.projects,
+        lead: db.leads,
         client: db.clients,
         finance: db.finance,
         production: db.productions,
@@ -4760,6 +5064,53 @@
       saveUsers();
       saveDb();
       renderApp();
+    }
+
+    async function changeOwnPassword(event) {
+      event.preventDefault();
+      const formData = new FormData(event.currentTarget);
+      const currentPassword = String(formData.get("currentPassword") || "");
+      const newPassword = String(formData.get("newPassword") || "");
+      if (newPassword.length < 6) {
+        alert("Use uma senha com pelo menos 6 caracteres.");
+        return;
+      }
+
+      try {
+        if (cloudEnabled() && cloudSession?.access_token) {
+          const verifiedSession = normalizeCloudSession(await cloudFetch("/auth/v1/token?grant_type=password", {
+            method: "POST",
+            body: JSON.stringify({ email: currentUser.email, password: currentPassword })
+          }, false));
+          const response = await fetch(`${cloudConfig.url}/auth/v1/user`, {
+            method: "PUT",
+            headers: {
+              apikey: cloudConfig.anonKey,
+              Authorization: `Bearer ${verifiedSession.access_token}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ password: newPassword })
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(result.msg || result.error_description || result.error || "Não foi possível alterar a senha.");
+          cloudSession = verifiedSession;
+          localStorage.setItem(CLOUD_SESSION_KEY, JSON.stringify(cloudSession));
+        } else {
+          const localUser = users.find(user => user.id === currentUser.id);
+          if (!localUser) throw new Error("Usuário não encontrado.");
+          const currentHash = await sha256(currentPassword);
+          if (localUser.passwordHash !== currentHash) throw new Error("Senha atual incorreta.");
+          localUser.passwordHash = await sha256(newPassword);
+          localUser.plainPassword = newPassword;
+          localUser.passwordUpdatedAt = today();
+          saveUsers();
+        }
+        event.currentTarget.reset();
+        accessNotice = "Sua senha foi alterada.";
+        renderApp();
+      } catch (error) {
+        alert(error.message || "Não foi possível alterar sua senha.");
+      }
     }
 
     function saveCalendarSettings(event) {
@@ -4976,6 +5327,73 @@
       renderApp();
     }
 
+    function openApproveSignupModal(id) {
+      const request = signupRequests.find(item => item.id === id);
+      if (!request) return;
+      $("#modalRoot").innerHTML = `
+        <dialog class="modal">
+          <form id="approveSignupForm">
+            <div class="modal-head">
+              <div>
+                <h2>Aprovar pré-cadastro</h2>
+                <p class="muted">${escapeHtml(request.email)} receberá acesso próprio após a aprovação.</p>
+              </div>
+              <button class="btn icon" type="button" data-close-modal title="Fechar" data-icon="x"></button>
+            </div>
+            <div class="form-grid">
+              ${field("Valor mensal", "monthlyValue", 0, "number")}
+              <div class="field"><label>Status da assinatura</label><select name="subscriptionStatus">${subscriptionOptions("pendente")}</select></div>
+              ${field("Data combinada de pagamento", "paymentDueDate", "", "date")}
+              ${area("Observação da aprovação", "notes", "", "wide")}
+            </div>
+            <div class="modal-actions">
+              <button class="btn" type="button" data-close-modal>Cancelar</button>
+              <button class="btn accent" type="submit" data-icon="check">Aprovar e criar login</button>
+            </div>
+          </form>
+        </dialog>
+      `;
+      const dialog = $("#modalRoot dialog");
+      dialog.showModal();
+      applyIcons(dialog);
+      $$("[data-close-modal]", dialog).forEach(button => button.addEventListener("click", () => dialog.close()));
+      dialog.addEventListener("close", () => $("#modalRoot").innerHTML = "");
+      $("#approveSignupForm").addEventListener("submit", event => approveSignupRequest(event, id));
+    }
+
+    async function approveSignupRequest(event, id) {
+      event.preventDefault();
+      const formData = new FormData(event.currentTarget);
+      try {
+        await cloudAdminAction("approve_signup_request", {
+          requestId: id,
+          monthlyValue: Number(formData.get("monthlyValue") || 0),
+          subscriptionStatus: String(formData.get("subscriptionStatus") || "pendente"),
+          paymentDueDate: String(formData.get("paymentDueDate") || ""),
+          notes: String(formData.get("notes") || "").trim()
+        });
+        await loadCloudClients();
+        await loadSignupRequests();
+        accessNotice = "Pré-cadastro aprovado e login criado.";
+        $("#modalRoot dialog")?.close();
+        renderApp();
+      } catch (error) {
+        alert(error.message || "Não foi possível aprovar o pré-cadastro.");
+      }
+    }
+
+    async function rejectSignupRequest(id) {
+      const note = prompt("Motivo da reprovação (opcional):") || "";
+      try {
+        await cloudAdminAction("reject_signup_request", { requestId: id, note });
+        await loadSignupRequests();
+        accessNotice = "Pré-cadastro reprovado.";
+        renderApp();
+      } catch (error) {
+        alert(error.message || "Não foi possível reprovar o pré-cadastro.");
+      }
+    }
+
     async function createUser(event) {
       event.preventDefault();
       const form = event.currentTarget;
@@ -5156,6 +5574,7 @@
       const hits = [
         ...visibleTasks().map(item => ({ module: "tasks", icon: "check-square", title: item.title, meta: getClientName(item.clientId) })),
         ...db.projects.map(item => ({ module: "projects", icon: "folder-kanban", title: item.name, meta: getClientName(item.clientId) })),
+        ...db.leads.map(item => ({ module: "leads", icon: "target", title: item.name || item.business, meta: `${item.stage || "Novo"} ${item.email || ""}` })),
         ...db.clients.map(item => ({ module: "clients", icon: "users", title: item.name, meta: item.company })),
         ...db.finance.map(item => ({ module: "finance", icon: "wallet", title: item.title, meta: money(item.value) })),
         ...db.productions.map(item => ({ module: "production", icon: "clapperboard", title: item.type, meta: getClientName(item.clientId) }))
