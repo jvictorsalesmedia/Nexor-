@@ -5096,11 +5096,13 @@
       const newPassword = String(formData.get("newPassword") || "");
       const confirmPassword = String(formData.get("confirmPassword") || "");
       if (newPassword.length < 6) {
-        alert("Use uma senha com pelo menos 6 caracteres.");
+        accessNotice = "Use uma senha com pelo menos 6 caracteres.";
+        renderApp();
         return;
       }
       if (newPassword !== confirmPassword) {
-        alert("A nova senha e a confirmacao devem ser iguais.");
+        accessNotice = "A nova senha e a confirmacao devem ser iguais.";
+        renderApp();
         return;
       }
 
@@ -5144,6 +5146,9 @@
         accessNotice = `Sua senha foi alterada.${notificationWarning}`;
         renderApp();
       } catch (error) {
+        accessNotice = error.message || "Nao foi possivel alterar sua senha.";
+        renderApp();
+        return;
         alert(error.message || "Não foi possível alterar sua senha.");
       }
     }
