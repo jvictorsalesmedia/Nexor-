@@ -4108,7 +4108,7 @@
                 <div class="field"><label>Nova senha</label><input name="newPassword" type="password" autocomplete="new-password" minlength="6" required></div>
                 <div class="field"><label>Confirmar nova senha</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required></div>
                 <div class="wide row-actions">
-                  <button class="btn" type="submit" data-icon="check">Alterar minha senha</button>
+                  <button class="btn" type="button" data-change-own-password data-icon="check">Alterar minha senha</button>
                 </div>
               </form>
               <div class="list-row">
@@ -4487,6 +4487,11 @@
       $$("[data-reject-signup]").forEach(button => button.addEventListener("click", () => rejectSignupRequest(button.dataset.rejectSignup)));
       $("#createUserForm")?.addEventListener("submit", createUser);
       $("#ownPasswordForm")?.addEventListener("submit", changeOwnPassword);
+      $("[data-change-own-password]")?.addEventListener("click", event => {
+        const form = event.currentTarget.closest("form");
+        if (form?.reportValidity && !form.reportValidity()) return;
+        if (form) changeOwnPassword({ preventDefault() {}, currentTarget: form });
+      });
       $$("[data-reveal-password]").forEach(button => button.addEventListener("click", () => revealUserPassword(button.dataset.revealPassword)));
       $$("[data-change-password-user]").forEach(button => button.addEventListener("click", () => changeUserPassword(button.dataset.changePasswordUser)));
       $$("[data-activate-user]").forEach(button => button.addEventListener("click", () => setUserStatus(button.dataset.activateUser, "Ativo")));
