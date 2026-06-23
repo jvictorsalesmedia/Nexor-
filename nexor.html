@@ -2394,6 +2394,14 @@
       }
     }
 
+    function readableError(error, fallback) {
+      const raw = error?.message || String(error || "");
+      const parsed = parseJson(raw);
+      const message = parsed?.msg || parsed?.error_description || parsed?.error || raw || fallback;
+      if (/invalid login credentials/i.test(message)) return "Senha atual incorreta.";
+      return message;
+    }
+
     function cloudHeaders(useAuth = true) {
       const headers = {
         apikey: cloudConfig.anonKey,
@@ -5152,7 +5160,7 @@
         accessNotice = `Sua senha foi alterada.${notificationWarning}`;
         renderApp();
       } catch (error) {
-        accessNotice = error.message || "Nao foi possivel alterar sua senha.";
+        accessNotice = readableError(error, "Nao foi possivel alterar sua senha.");
         renderApp();
         return;
         alert(error.message || "Não foi possível alterar sua senha.");
