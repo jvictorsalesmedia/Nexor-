@@ -1,0 +1,69 @@
+NEXOR — PASTA PRONTA PARA SUBIR
+================================
+
+Esta pasta tem TODOS os arquivos do projeto, já com a correção de
+segurança (sem senha em texto puro) e com a migration completa do
+banco. O banco de dados NOVO já foi criado e testado — só falta você
+conectar o GitHub, a Vercel e colar as chaves abaixo.
+
+------------------------------------------------------------
+PASSO 1 — GITHUB
+------------------------------------------------------------
+Suba o conteúdo desta pasta para o seu repositório
+(github.com/jvictorsalesmedia/Nexor-), do jeito que preferir
+(GitHub Desktop, upload pelo site, ou linha de comando).
+
+Esta pasta já tem uma pasta .git escondida dentro dela com o
+histórico dos commits que eu fiz — se você usar "git push" nela
+direto, deve funcionar sem precisar reconfigurar nada.
+
+------------------------------------------------------------
+PASSO 2 — VERCEL
+------------------------------------------------------------
+1. Entra em vercel.com/new
+2. Importa o repositório Nexor- do GitHub
+3. Framework: "Other"
+4. ANTES de clicar em Deploy, abre "Environment Variables" e
+   cola as 3 variáveis abaixo (copiar e colar exatamente):
+
+SUPABASE_URL
+https://trtwxjalnubxtjxmmbvj.supabase.co
+
+SUPABASE_ANON_KEY
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRydHd4amFsbnVieHRqeG1tYnZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2NzExMzYsImV4cCI6MjEwMDI0NzEzNn0.dGMv4SFPapN6YWVxeDiRWOkBLgVMLkJP3eTuQJBKD9Q
+
+SUPABASE_SERVICE_ROLE_KEY
+(essa você mesmo pega em:
+ supabase.com/dashboard/project/trtwxjalnubxtjxmmbvj/settings/api-keys
+ — procure a linha "secret", clique no olho pra revelar, copie)
+
+5. Clica em Deploy.
+
+------------------------------------------------------------
+PASSO 3 — SUPABASE (criar seu login de administrador)
+------------------------------------------------------------
+O banco de dados JÁ ESTÁ PRONTO (todas as tabelas e regras de
+segurança já foram criadas). Só falta criar o SEU login de admin,
+porque o primeiro usuário não pode se cadastrar sozinho pelo site.
+
+1. Abra:
+   supabase.com/dashboard/project/trtwxjalnubxtjxmmbvj/auth/users
+2. Clique no botão verde "Add user" > "Create new user"
+3. Preencha:
+   - Email: jvgsales72@gmail.com
+     (é o email que o sistema já reconhece como admin principal;
+      se quiser usar outro, avise o Claude antes de continuar)
+   - Password: escolha uma senha sua (não precisa contar pra ninguém)
+   - Marque a caixinha "Auto Confirm User"
+4. Clique em "Create user"
+5. Volte na conversa com o Claude e avise "criei o usuário" — ele
+   roda um comando simples que transforma esse usuário em admin
+   (não mexe na sua senha, só muda uma marcação no banco).
+
+------------------------------------------------------------
+DEPOIS DE TUDO ISSO
+------------------------------------------------------------
+O site deve estar no ar e funcionando. Você entra com o email e
+senha que criou no Passo 3, e a partir da tela "Usuários / acessos"
+você cadastra os clientes normalmente (eles recebem um convite por
+email pra definir a própria senha — ninguém mais vê a senha deles).
