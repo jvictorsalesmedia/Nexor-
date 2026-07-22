@@ -15,6 +15,16 @@ module.exports = async function handler(req, res) {
     const anonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || serviceKey;
     if (!supabaseUrl || !serviceKey) throw new Error("Supabase server env is missing.");
 
+    // Usado como redirect_to dos emails de convite/recuperação — o Supabase
+    // acrescenta os tokens de sessão no hash da URL de destino.
+    const siteOrigin = (
+      req.headers.origin ||
+      (req.headers.host ? `https://${req.headers.host}` : "") ||
+      process.env.PUBLIC_SITE_URL ||
+      ""
+    ).replace(/\/$/, "");
+    if (!siteOrigin) throw new Error("Nao foi possivel determinar a URL do site para o convite.");
+
     const token = String(req.headers.authorization || "").replace("Bearer ", "").trim();
     if (!token) return res.status(401).json({ error: "Missing admin session." });
 
@@ -26,17 +36,18 @@ module.exports = async function handler(req, res) {
 
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
     const action = String(body.action || "");
-    if (action === "create_client") return res.status(200).json(await createClientAccount(supabaseUrl, serviceKey, body, caller.id));
+    if (action === "create_client") return res.status(200).json(await createClientAccount(supabaseUrl, serviceKey, body, caller.id, siteOrigin));
     if (action === "update_client") return res.status(200).json(await updateClientAccount(supabaseUrl, serviceKey, body, caller.id));
     if (action === "delete_client") return res.status(200).json(await deleteClientAccount(supabaseUrl, serviceKey, body));
     if (action === "set_client_subscription") return res.status(200).json(await setClientSubscription(supabaseUrl, serviceKey, body));
     if (action === "set_client_login") return res.status(200).json(await setClientLogin(supabaseUrl, serviceKey, body));
-    if (action === "create") return res.status(200).json(await createTeamUser(supabaseUrl, serviceKey, body, caller.id));
-    if (action === "update_password") return res.status(200).json(await updateTeamUserPassword(supabaseUrl, serviceKey, body, caller.id));
+    if (action === "reset_client_password") return res.status(200).json(await resetClientPassword(supabaseUrl, serviceKey, anonKey, body, siteOrigin));
+    if (action === "create") return res.status(200).json(await createTeamUser(supabaseUrl, serviceKey, body, caller.id, siteOrigin));
+    if (action === "update_password") return res.status(200).json(await updateTeamUserPassword(supabaseUrl, serviceKey, anonKey, body, caller.id, siteOrigin));
     if (action === "set_status") return res.status(200).json(await setTeamUserStatus(supabaseUrl, serviceKey, body, caller.id));
     if (action === "delete") return res.status(200).json(await deleteTeamUser(supabaseUrl, serviceKey, body, caller.id));
     if (action === "list_signup_requests") return res.status(200).json(await listSignupRequests(supabaseUrl, serviceKey));
-    if (action === "approve_signup_request") return res.status(200).json(await approveSignupRequest(supabaseUrl, serviceKey, body, caller.id));
+    if (action === "approve_signup_request") return res.status(200).json(await approveSignupRequest(supabaseUrl, serviceKey, body, caller.id, siteOrigin));
     if (action === "reject_signup_request") return res.status(200).json(await rejectSignupRequest(supabaseUrl, serviceKey, body, caller.id));
 
     res.status(400).json({ error: "Unknown action." });
@@ -45,19 +56,18 @@ module.exports = async function handler(req, res) {
   }
 };
 
-async function createTeamUser(supabaseUrl, serviceKey, body, callerId) {
+async function createTeamUser(supabaseUrl, serviceKey, body, callerId, siteOrigin) {
   const payload = normalizeTeamUserPayload(body);
-  if (!payload.name || !payload.email || payload.password.length < 6) {
-    throw new Error("Informe nome, e-mail e senha com pelo menos 6 caracteres.");
+  if (!payload.name || !payload.email) {
+    throw new Error("Informe nome e e-mail.");
   }
 
-  const auth = await authAdmin(supabaseUrl, serviceKey, "/admin/users", {
+  const redirectTo = `${siteOrigin}/`;
+  const auth = await authAdmin(supabaseUrl, serviceKey, `/invite?redirect_to=${encodeURIComponent(redirectTo)}`, {
     method: "POST",
     body: {
       email: payload.email,
-      password: payload.password,
-      email_confirm: true,
-      user_metadata: {
+      data: {
         full_name: payload.name,
         gender: payload.gender
       }
@@ -75,23 +85,24 @@ async function createTeamUser(supabaseUrl, serviceKey, body, callerId) {
     status: "ativo"
   });
 
-  await upsertPasswordNote(supabaseUrl, serviceKey, user.id, payload.password, callerId);
   return { profile };
 }
 
-async function updateTeamUserPassword(supabaseUrl, serviceKey, body, callerId) {
+async function updateTeamUserPassword(supabaseUrl, serviceKey, anonKey, body, callerId, siteOrigin) {
   const userId = String(body.userId || "");
-  const password = String(body.password || "");
-  if (!userId || password.length < 6) throw new Error("Informe uma senha com pelo menos 6 caracteres.");
+  if (!userId) throw new Error("Usuario nao informado.");
 
   const protectedError = await mutableUserError(supabaseUrl, serviceKey, userId, callerId);
   if (protectedError) throw new Error(protectedError);
 
-  await authAdmin(supabaseUrl, serviceKey, `/admin/users/${encodeURIComponent(userId)}`, {
-    method: "PUT",
-    body: { password }
+  const profile = await restSingle(supabaseUrl, serviceKey, `/nexor_profiles?id=eq.${encodeURIComponent(userId)}&select=email`);
+  if (!profile?.email) throw new Error("Usuario nao encontrado.");
+
+  const redirectTo = `${siteOrigin}/`;
+  await authAdmin(supabaseUrl, anonKey, `/recover?redirect_to=${encodeURIComponent(redirectTo)}`, {
+    method: "POST",
+    body: { email: profile.email }
   });
-  await upsertPasswordNote(supabaseUrl, serviceKey, userId, password, callerId);
   return { ok: true };
 }
 
@@ -127,7 +138,7 @@ async function listSignupRequests(supabaseUrl, serviceKey) {
   return { requests: rows || [] };
 }
 
-async function approveSignupRequest(supabaseUrl, serviceKey, body, callerId) {
+async function approveSignupRequest(supabaseUrl, serviceKey, body, callerId, siteOrigin) {
   const request = await restSingle(
     supabaseUrl,
     serviceKey,
@@ -144,14 +155,13 @@ async function approveSignupRequest(supabaseUrl, serviceKey, body, callerId) {
     email: request.email,
     whatsapp: request.whatsapp || "",
     accessUsername: request.access_username || request.email.split("@")[0],
-    password: request.password_note,
     monthlyValue: body.monthlyValue || 0,
     subscriptionStatus: body.subscriptionStatus || "pendente",
     paymentDueDate: body.paymentDueDate || "",
     lastPaymentDate: body.lastPaymentDate || "",
     notes: [body.notes, "Criado a partir de pre-cadastro aprovado."].filter(Boolean).join("\n"),
     slug: body.slug || `${businessName}-${String(request.id).slice(0, 8)}`
-  }, callerId);
+  }, callerId, siteOrigin);
 
   const updated = await restPatch(
     supabaseUrl,
@@ -192,7 +202,6 @@ function normalizeTeamUserPayload(body) {
   return {
     name: String(body.name || "").trim(),
     email: String(body.email || "").trim().toLowerCase(),
-    password: String(body.password || ""),
     gender,
     role
   };
@@ -208,19 +217,20 @@ async function mutableUserError(supabaseUrl, serviceKey, userId, callerId) {
   return "";
 }
 
-async function createClientAccount(supabaseUrl, serviceKey, body, callerId) {
+async function createClientAccount(supabaseUrl, serviceKey, body, callerId, siteOrigin) {
   const payload = normalizeClientPayload(body);
-  if (!payload.businessName || !payload.responsibleName || !payload.email || !payload.accessUsername || !payload.password) {
+  if (!payload.businessName || !payload.responsibleName || !payload.email || !payload.accessUsername) {
     throw new Error("Campos obrigatórios ausentes.");
   }
 
-  const auth = await authAdmin(supabaseUrl, serviceKey, "/admin/users", {
+  // Convite por email: a pessoa define a própria senha ao clicar no link. O
+  // redirect leva direto para a área do cliente recém-criado.
+  const redirectTo = `${siteOrigin}/cliente/${encodeURIComponent(payload.slug)}`;
+  const auth = await authAdmin(supabaseUrl, serviceKey, `/invite?redirect_to=${encodeURIComponent(redirectTo)}`, {
     method: "POST",
     body: {
       email: payload.email,
-      password: payload.password,
-      email_confirm: true,
-      user_metadata: {
+      data: {
         full_name: payload.responsibleName,
         business_name: payload.businessName,
         access_username: payload.accessUsername,
@@ -258,7 +268,6 @@ async function createClientAccount(supabaseUrl, serviceKey, body, callerId) {
     created_by: callerId
   });
 
-  await upsertPasswordNote(supabaseUrl, serviceKey, user.id, payload.password, callerId);
   return { client };
 }
 
@@ -276,7 +285,6 @@ async function updateClientAccount(supabaseUrl, serviceKey, body, callerId) {
       slug: payload.slug
     }
   };
-  if (payload.password) authPatch.password = payload.password;
   await authAdmin(supabaseUrl, serviceKey, `/admin/users/${client.auth_user_id}`, {
     method: "PUT",
     body: authPatch
@@ -309,8 +317,22 @@ async function updateClientAccount(supabaseUrl, serviceKey, body, callerId) {
     login_blocked: Boolean(client.login_blocked)
   });
 
-  if (payload.password) await upsertPasswordNote(supabaseUrl, serviceKey, client.auth_user_id, payload.password, callerId);
   return { client: updated };
+}
+
+async function resetClientPassword(supabaseUrl, serviceKey, anonKey, body, siteOrigin) {
+  const client = await restSingle(supabaseUrl, serviceKey, `/nexor_clients?id=eq.${encodeURIComponent(body.clientId || "")}&select=id,email,slug`);
+  if (!client) throw new Error("Cliente não encontrado.");
+
+  // /recover é o endpoint certo para usuário que já existe (o /invite rejeita
+  // quem já confirmou a conta). Usa a anon key, como o GoTrue espera nesse
+  // endpoint público de "esqueci minha senha".
+  const redirectTo = `${siteOrigin}/cliente/${encodeURIComponent(client.slug)}`;
+  await authAdmin(supabaseUrl, anonKey, `/recover?redirect_to=${encodeURIComponent(redirectTo)}`, {
+    method: "POST",
+    body: { email: client.email }
+  });
+  return { ok: true };
 }
 
 async function deleteClientAccount(supabaseUrl, serviceKey, body) {
@@ -348,7 +370,6 @@ function normalizeClientPayload(body) {
     email: String(body.email || "").trim().toLowerCase(),
     whatsapp: String(body.whatsapp || "").trim(),
     accessUsername: String(body.accessUsername || "").trim().toLowerCase(),
-    password: String(body.password || ""),
     monthlyValue: Number(body.monthlyValue || 0),
     subscriptionStatus: ["pago", "pendente", "atrasado"].includes(body.subscriptionStatus) ? body.subscriptionStatus : "pendente",
     paymentDueDate: String(body.paymentDueDate || ""),
@@ -398,14 +419,6 @@ async function upsertProfile(supabaseUrl, serviceKey, body) {
 
 async function upsertClient(supabaseUrl, serviceKey, body) {
   return upsertRest(supabaseUrl, serviceKey, "/nexor_clients?on_conflict=id", body);
-}
-
-async function upsertPasswordNote(supabaseUrl, serviceKey, userId, password, updatedBy) {
-  return upsertRest(supabaseUrl, serviceKey, "/nexor_user_password_notes?on_conflict=user_id", {
-    user_id: userId,
-    password_note: password,
-    updated_by: updatedBy
-  });
 }
 
 async function upsertRest(supabaseUrl, serviceKey, path, body) {

@@ -35,7 +35,6 @@ module.exports = async function handler(req, res) {
         email: payload.email,
         whatsapp: payload.whatsapp,
         access_username: payload.accessUsername,
-        password_note: payload.password,
         responsible_photo_data_url: payload.photoDataUrl,
         status: "pendente"
       }
@@ -60,20 +59,16 @@ function normalizeSignupRequest(body) {
     email,
     whatsapp: String(body.whatsapp || "").trim(),
     accessUsername,
-    password: String(body.password || ""),
     photoDataUrl: String(body.photoDataUrl || "")
   };
 }
 
 function validateSignupRequest(payload) {
-  if (!payload.responsibleName || !payload.email || !payload.password) {
-    throw new Error("Informe nome do responsavel, e-mail e senha.");
+  if (!payload.responsibleName || !payload.email) {
+    throw new Error("Informe nome do responsavel e e-mail.");
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) {
     throw new Error("Informe um e-mail valido.");
-  }
-  if (payload.password.length < 6) {
-    throw new Error("Use uma senha com pelo menos 6 caracteres.");
   }
   if (!payload.photoDataUrl || !/^data:image\/(png|jpe?g|webp);base64,/i.test(payload.photoDataUrl)) {
     throw new Error("Envie uma foto do responsavel.");

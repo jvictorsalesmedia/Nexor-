@@ -2142,6 +2142,23 @@
       </div>
       <div id="authError" class="auth-error" role="alert"></div>
     </form>
+
+    <form id="setPasswordForm" class="auth-card hidden" autocomplete="off">
+      <img class="auth-logo" src="/nexor-logo-transparent.png" alt="Nexor" />
+      <p id="setPasswordText">Defina sua senha de acesso para continuar.</p>
+      <div class="field">
+        <label for="newPassword">Nova senha</label>
+        <input id="newPassword" name="newPassword" type="password" autocomplete="new-password" minlength="6" required />
+      </div>
+      <div class="field">
+        <label for="confirmNewPassword">Confirmar senha</label>
+        <input id="confirmNewPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required />
+      </div>
+      <div class="auth-actions">
+        <button class="btn primary" type="submit" data-icon="check">Salvar e entrar</button>
+      </div>
+      <div id="setPasswordError" class="auth-error" role="alert"></div>
+    </form>
   </div>
 
   <div id="appShell" class="shell hidden">
@@ -2274,6 +2291,7 @@
     let cloudConfig = { url: "", anonKey: "" };
     let cloudSession = null;
     let cloudWorkspaceRecordId = "";
+    let pendingAuthHash = null;
 
     const $ = (selector, root = document) => root.querySelector(selector);
     const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -2295,6 +2313,23 @@
       const querySlug = new URLSearchParams(location.search).get("cliente");
       const slug = decodeURIComponent(match?.[1] || querySlug || "").trim().toLowerCase();
       return { active: Boolean(slug), slug };
+    }
+
+    // O Supabase redireciona os links de convite/recuperação de senha com os
+    // tokens de sessão no hash da URL (#access_token=...&type=invite), nunca
+    // em ?query — funciona em qualquer path, inclusive /cliente/<slug>.
+    function parseAuthHash() {
+      if (!location.hash || location.hash.length < 2) return null;
+      const params = new URLSearchParams(location.hash.slice(1));
+      const accessToken = params.get("access_token");
+      const type = params.get("type");
+      if (!accessToken || (type !== "invite" && type !== "recovery")) return null;
+      return {
+        accessToken,
+        refreshToken: params.get("refresh_token") || "",
+        expiresIn: Number(params.get("expires_in") || 3600),
+        type
+      };
     }
 
     function clientAccessUrl(client) {
@@ -2484,7 +2519,6 @@
         gender: profile.gender || authUser.user_metadata?.gender || "neutral",
         role: profile.app_role || "colaborador",
         status: profile.status === "inativo" ? "Inativo" : "Ativo",
-        plainPassword: profile.passwordNote || profile.password_note || "",
         createdAt: profile.created_at ? String(profile.created_at).slice(0, 10) : "",
         lastLogin: ""
       };
@@ -2494,21 +2528,10 @@
       if (!cloudEnabled() || !cloudSession?.access_token) return;
       const rows = await cloudFetch("/rest/v1/nexor_profiles?select=*&order=created_at.asc");
       const mapped = (rows || []).map(profile => cloudProfileToUser(profile));
-      if (currentUser?.role === "admin") {
-        try {
-          const notes = await cloudFetch("/rest/v1/nexor_user_password_notes?select=user_id,password_note");
-          const passwords = new Map((notes || []).map(note => [note.user_id, note.password_note || ""]));
-          mapped.forEach(user => {
-            user.plainPassword = passwords.get(user.id) || user.plainPassword || "";
-          });
-        } catch (error) {
-          console.warn("Não foi possível carregar senhas salvas para o admin.", error);
-        }
-      }
       users = mapped.length ? mapped : [currentUser].filter(Boolean);
     }
 
-    function cloudClientToAccount(client, password = "") {
+    function cloudClientToAccount(client) {
       return {
         id: client.id,
         authUserId: client.auth_user_id,
@@ -2518,7 +2541,6 @@
         email: client.email || "",
         whatsapp: client.whatsapp || "",
         accessUsername: client.access_username || "",
-        plainPassword: password,
         monthlyValue: Number(client.monthly_value || 0),
         subscriptionStatus: client.subscription_status || "pendente",
         paymentDueDate: client.payment_due_date || "",
@@ -2533,14 +2555,7 @@
     async function loadCloudClients() {
       if (!cloudEnabled() || !cloudSession?.access_token || currentUser?.role !== "admin") return;
       const rows = await cloudFetch("/rest/v1/nexor_clients?select=*&order=created_at.desc");
-      let passwords = new Map();
-      try {
-        const notes = await cloudFetch("/rest/v1/nexor_user_password_notes?select=user_id,password_note");
-        passwords = new Map((notes || []).map(note => [note.user_id, note.password_note || ""]));
-      } catch (error) {
-        console.warn("Não foi possível carregar senhas de clientes.", error);
-      }
-      platformClients = (rows || []).map(client => cloudClientToAccount(client, passwords.get(client.auth_user_id) || ""));
+      platformClients = (rows || []).map(client => cloudClientToAccount(client));
     }
 
     function cloudSignupRequestToItem(request) {
@@ -2972,13 +2987,27 @@
 
     async function boot() {
       clientRoute = parseClientRoute();
+      pendingAuthHash = parseAuthHash();
       await loadCloudConfig();
       await loadUsers();
       await loadPlatformClients();
       applyIcons();
       applyLoginContext();
       $("#loginForm").addEventListener("submit", handleLogin);
+      $("#setPasswordForm").addEventListener("submit", acceptInviteAndSetPassword);
       $("#signupRequestBtn")?.addEventListener("click", openSignupRequestModal);
+
+      if (pendingAuthHash) {
+        // Limpa o hash da URL (tokens sensíveis) antes de qualquer outra
+        // coisa, e mostra a tela de definir senha em vez do login normal.
+        history.replaceState(null, "", location.pathname + location.search);
+        $("#setPasswordText").textContent = pendingAuthHash.type === "recovery"
+          ? "Redefina sua senha de acesso."
+          : "Bem-vindo(a)! Defina sua senha de acesso para continuar.";
+        $("#loginForm").classList.add("hidden");
+        $("#setPasswordForm").classList.remove("hidden");
+        return;
+      }
       $("#logoutBtn").addEventListener("click", logout);
       $("#themeBtn").addEventListener("click", toggleTheme);
       $("#notifyBtn").addEventListener("click", () => {
@@ -3059,7 +3088,6 @@
               ${field("E-mail", "email", "", "email", true)}
               ${field("WhatsApp", "whatsapp")}
               ${field("Usuário de acesso desejado", "accessUsername")}
-              ${field("Senha de acesso", "password", "", "password", true)}
               <div class="field wide">
                 <label>Foto do responsável</label>
                 <input name="photo" type="file" accept="image/png,image/jpeg,image/webp" required>
@@ -3099,7 +3127,6 @@
           email: String(formData.get("email") || "").trim().toLowerCase(),
           whatsapp: String(formData.get("whatsapp") || "").trim(),
           accessUsername: String(formData.get("accessUsername") || "").trim().toLowerCase(),
-          password: String(formData.get("password") || ""),
           photoDataUrl: await imageFileToDataUrl(photo)
         };
         const response = await fetch("/api/signup-request", {
@@ -3182,6 +3209,67 @@
       saveUsers();
       localStorage.setItem(SESSION_KEY, user.id);
       await startSession(user);
+    }
+
+    async function acceptInviteAndSetPassword(event) {
+      event.preventDefault();
+      const errorEl = $("#setPasswordError");
+      errorEl.textContent = "";
+
+      if (!pendingAuthHash?.accessToken) {
+        errorEl.textContent = "Link de convite inválido ou expirado. Peça um novo convite.";
+        return;
+      }
+
+      const formData = new FormData(event.currentTarget);
+      const newPassword = String(formData.get("newPassword") || "");
+      const confirmPassword = String(formData.get("confirmPassword") || "");
+      if (newPassword.length < 6) {
+        errorEl.textContent = "Use uma senha com pelo menos 6 caracteres.";
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        errorEl.textContent = "A nova senha e a confirmação devem ser iguais.";
+        return;
+      }
+
+      try {
+        // Mesmo mecanismo de changeOwnPassword(): PUT /auth/v1/user com o
+        // access_token da sessão — aqui vem do hash do link de convite/
+        // recuperação em vez de uma sessão já logada.
+        const response = await fetch(`${cloudConfig.url}/auth/v1/user`, {
+          method: "PUT",
+          headers: {
+            apikey: cloudConfig.anonKey,
+            Authorization: `Bearer ${pendingAuthHash.accessToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ password: newPassword })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.msg || result.error_description || result.error || "Não foi possível definir a senha.");
+
+        cloudSession = normalizeCloudSession({
+          access_token: pendingAuthHash.accessToken,
+          refresh_token: pendingAuthHash.refreshToken,
+          expires_in: pendingAuthHash.expiresIn
+        });
+        localStorage.setItem(CLOUD_SESSION_KEY, JSON.stringify(cloudSession));
+        pendingAuthHash = null;
+
+        const cloudUser = await cloudCurrentProfile();
+        const clientState = cloudUser.clientAccount ? clientAccessState(cloudUser.clientAccount) : { allowed: true };
+        if (cloudUser.status === "Inativo" || !clientState.allowed) {
+          localStorage.removeItem(CLOUD_SESSION_KEY);
+          cloudSession = null;
+          errorEl.textContent = clientState.reason || "Este login está inativo. Fale com o administrador.";
+          return;
+        }
+        await startSession(cloudUser);
+      } catch (error) {
+        console.error(error);
+        errorEl.textContent = readableError(error, "Não foi possível definir a senha.");
+      }
     }
 
     async function resolveLocalLogin(identifier) {
@@ -3745,6 +3833,7 @@
                             ? `<button class="btn accent" type="button" data-client-unblock="${client.id}" data-icon="check">Liberar</button>`
                             : `<button class="btn danger" type="button" data-client-block="${client.id}" data-icon="x">Bloquear</button>`}
                           <button class="btn" type="button" data-copy-client-access="${client.id}" data-icon="download">Copiar</button>
+                          <button class="btn" type="button" data-resend-client-invite="${client.id}" data-icon="repeat">Reenviar convite</button>
                           <button class="btn icon danger" type="button" title="Excluir" data-delete-client-account="${client.id}" data-icon="trash"></button>
                         </div>
                       </td>
@@ -3814,7 +3903,6 @@
           ${field("E-mail", "email", client.email, "email", true)}
           ${field("WhatsApp", "whatsapp", client.whatsapp)}
           ${field("Usuário de acesso", "accessUsername", client.accessUsername, "text", true)}
-          ${field(client.id ? "Nova senha de acesso (opcional)" : "Senha de acesso", "password", "", "text", !client.id)}
           ${field("Slug do link", "slug", slug)}
           ${field("Valor mensal", "monthlyValue", client.monthlyValue || 0, "number", true)}
           <div class="field"><label>Status da assinatura</label><select name="subscriptionStatus">${subscriptionOptions(client.subscriptionStatus || "pendente")}</select></div>
@@ -4492,6 +4580,7 @@
       $$("[data-client-block]").forEach(button => button.addEventListener("click", () => setClientLoginBlock(button.dataset.clientBlock, true)));
       $$("[data-client-unblock]").forEach(button => button.addEventListener("click", () => setClientLoginBlock(button.dataset.clientUnblock, false)));
       $$("[data-copy-client-access]").forEach(button => button.addEventListener("click", () => copyClientAccess(button.dataset.copyClientAccess)));
+      $$("[data-resend-client-invite]").forEach(button => button.addEventListener("click", () => resendClientInvite(button.dataset.resendClientInvite)));
       $$("[data-approve-signup]").forEach(button => button.addEventListener("click", () => openApproveSignupModal(button.dataset.approveSignup)));
       $$("[data-reject-signup]").forEach(button => button.addEventListener("click", () => rejectSignupRequest(button.dataset.rejectSignup)));
       $("#createUserForm")?.addEventListener("submit", createUser);
@@ -5264,8 +5353,6 @@
         email,
         whatsapp: String(formData.get("whatsapp") || "").trim(),
         accessUsername,
-        password: String(formData.get("password") || ""),
-        plainPassword: String(formData.get("password") || existing.plainPassword || ""),
         monthlyValue: Number(formData.get("monthlyValue") || 0),
         subscriptionStatus: String(formData.get("subscriptionStatus") || "pendente"),
         paymentDueDate: String(formData.get("paymentDueDate") || ""),
@@ -5280,8 +5367,8 @@
       event.preventDefault();
       const existing = platformClients.find(item => item.id === id) || {};
       const payload = clientPayloadFromForm(new FormData(event.currentTarget), existing);
-      if (!payload.businessName || !payload.responsibleName || !payload.email || !payload.accessUsername || (!id && !payload.password)) {
-        alert("Preencha negócio, responsável, e-mail, usuário e senha.");
+      if (!payload.businessName || !payload.responsibleName || !payload.email || !payload.accessUsername) {
+        alert("Preencha negócio, responsável, e-mail e usuário de acesso.");
         return;
       }
 
@@ -5298,7 +5385,9 @@
       try {
         await cloudAdminAction(id ? "update_client" : "create_client", payload);
         await loadCloudClients();
-        accessNotice = `${id ? "Usuário atualizado" : "Usuário criado"}: ${payload.businessName}`;
+        accessNotice = id
+          ? `Usuário atualizado: ${payload.businessName}`
+          : `Convite enviado para ${payload.email}. A pessoa define a própria senha ao clicar no link.`;
         $("#modalRoot dialog")?.close();
         renderApp();
       } catch (error) {
@@ -5412,13 +5501,26 @@
       const text = [
         `Link: ${clientAccessUrl(client)}`,
         `Usuário: ${client.accessUsername}`,
-        `Senha: ${client.plainPassword || "senha não salva, redefina no painel"}`
+        `A senha é definida pela própria pessoa pelo link de convite enviado por email.`
       ].join("\n");
       try {
         await navigator.clipboard.writeText(text);
         accessNotice = `Acesso copiado: ${client.businessName}`;
       } catch {
         prompt("Copie os dados de acesso:", text);
+      }
+      renderApp();
+    }
+
+    async function resendClientInvite(id) {
+      const client = platformClients.find(item => item.id === id);
+      if (!client) return;
+      try {
+        await cloudAdminAction("reset_client_password", { clientId: id });
+        accessNotice = `Email de redefinição enviado para ${client.email}.`;
+      } catch (error) {
+        console.error(error);
+        alert(error.message || "Não foi possível enviar o email.");
       }
       renderApp();
     }
