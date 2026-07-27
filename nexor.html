@@ -107,7 +107,7 @@
       display: grid;
       place-items: center;
       padding: 28px;
-      background: #000;
+      background: var(--auth-base);
     }
 
     .auth-card {
@@ -185,28 +185,28 @@
 
     .auth-view .auth-card p {
       margin: 0 0 22px;
-      color: #a8a8a4;
+      color: var(--muted);
     }
 
     .auth-view .field label {
-      color: #b8b8b4;
+      color: var(--muted);
     }
 
     .auth-view input {
-      background: #050505;
-      border-color: #2a2a2d;
-      color: #ffffff;
+      background: var(--auth-card-bg);
+      border-color: var(--glass-border);
+      color: var(--text);
     }
 
     .auth-view input:focus {
-      border-color: #ffffff;
-      box-shadow: 0 0 0 4px rgba(255,255,255,0.12);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
     }
 
     .auth-view .btn.primary {
-      background: #ffffff;
-      border-color: #ffffff;
-      color: #050505;
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--bg);
     }
 
     .field {
