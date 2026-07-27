@@ -345,7 +345,8 @@
   /* ---------- Video ---------- */
 
   .video-frame {
-    max-width: 860px;
+    width: fit-content;
+    max-width: 100%;
     margin: 0 auto;
     border-radius: 20px;
     overflow: hidden;
@@ -354,7 +355,17 @@
     background: #000;
   }
 
-  .video-frame video { width: 100%; display: block; }
+  .video-frame video {
+    display: block;
+    height: min(72vh, 620px);
+    max-width: 100%;
+    width: auto;
+    aspect-ratio: 9 / 16;
+  }
+
+  @media (max-width: 640px) {
+    .video-frame video { height: min(60vh, 480px); }
+  }
 
   /* ---------- Section heads / cards ---------- */
 
