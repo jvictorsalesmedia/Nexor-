@@ -777,7 +777,7 @@
       width: 10px;
       height: 10px;
       border-radius: 50%;
-      background: var(--accent);
+      background: var(--dot-color, var(--accent));
       flex: 0 0 auto;
     }
 
@@ -1120,7 +1120,7 @@
       display: block;
       height: 100%;
       width: var(--value, 0%);
-      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      background: var(--bar-color, linear-gradient(90deg, var(--accent), var(--accent-2)));
       border-radius: inherit;
     }
 
@@ -1649,6 +1649,15 @@
     .dot.gold { background: #e0a82e; }
     .dot.gray { background: #6e6e72; }
     .dot.green { background: #27d6a1; }
+
+    .sq {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      display: inline-block;
+      flex: none;
+      background: var(--dot-color, var(--accent));
+    }
 
     .kanban-focus-grid {
       display: grid;
@@ -4234,17 +4243,18 @@
         <div class="grid three">
           ${db.projects.map(project => {
             const taskCount = db.tasks.filter(task => task.projectId === project.id).length;
+            const projectColor = colorForId(project.id, projectPalette);
             return `
               <article class="item-card">
                 <div class="card-head">
                   <div>
-                    <strong>${escapeHtml(project.name)}</strong>
+                    <strong><span class="sq" style="--dot-color:${projectColor}"></span> ${escapeHtml(project.name)}</strong>
                     <div class="meta">${escapeHtml(getClientName(project.clientId))} • ${dateText(project.dueDate)}</div>
                   </div>
                   ${statusChip(project.status)}
                 </div>
                 <p class="muted">${escapeHtml(project.description || "Sem descrição.")}</p>
-                <div class="progress" data-chart-tip="${escapeHtml(project.name)}|${Number(project.progress || 0)}% de progresso" style="--value:${Number(project.progress || 0)}%"><span></span></div>
+                <div class="progress" data-chart-tip="${escapeHtml(project.name)}|${Number(project.progress || 0)}% de progresso" style="--value:${Number(project.progress || 0)}%;--bar-color:${projectColor}"><span></span></div>
                 <div class="meta"><span>${project.progress || 0}%</span><span>${taskCount} tarefas</span><span>${money(project.budget)}</span></div>
                 <div class="row-actions">
                   <button class="btn" type="button" data-edit="project" data-id="${project.id}" data-icon="edit">Editar${project.roteiros?.length ? ` (${project.roteiros.length} roteiro${project.roteiros.length === 1 ? "" : "s"})` : ""}</button>
@@ -4722,7 +4732,7 @@
             return `
               <article class="item-card">
                 <div class="card-head">
-                  <div><strong>${escapeHtml(client.name)}</strong><div class="meta">${escapeHtml(client.company || "Pessoa física")}</div></div>
+                  <div><strong><span class="sq" style="--dot-color:${colorForId(client.id, projectPalette)}"></span> ${escapeHtml(client.name)}</strong><div class="meta">${escapeHtml(client.company || "Pessoa física")}</div></div>
                   <span class="chip accent">${projects} projetos</span>
                 </div>
                 <div class="meta">${escapeHtml(client.phone || "Sem telefone")} • ${escapeHtml(client.email || "Sem e-mail")}</div>
@@ -4800,7 +4810,7 @@
             ${budgetRows().map(row => `
               <div class="budget-row" data-chart-tip="${escapeHtml(row.category)}|${money(row.spent)}">
                 <strong>${escapeHtml(row.category)}</strong>
-                <div class="progress" style="--value:${row.percent}%"><span></span></div>
+                <div class="progress" style="--value:${row.percent}%;--bar-color:${colorForId(row.category, projectPalette)}"><span></span></div>
                 <span>${money(row.spent)}</span>
               </div>
             `).join("") || emptyInline("Nenhuma despesa registrada este mês.")}
@@ -5150,11 +5160,16 @@
       return Boolean(habit.history?.some(item => item.date === iso && item.done));
     }
 
-    function habitColor(id) {
-      const colors = ["red", "blue", "gold", "green", "gray"];
+    function colorForId(id, palette) {
       const score = String(id || "").split("").reduce((total, char) => total + char.charCodeAt(0), 0);
-      return colors[score % colors.length];
+      return palette[score % palette.length];
     }
+
+    function habitColor(id) {
+      return colorForId(id, ["red", "blue", "gold", "green", "gray"]);
+    }
+
+    const projectPalette = ["#5eb2ff", "#e8c15e", "#7ee7a8"];
 
     function taskRow(task) {
       return `
@@ -5282,12 +5297,12 @@
       const clean = (segments || []).filter(item => Number(item.value) > 0);
       const total = sum(clean.map(item => item.value)) || 1;
       let cumulative = 0;
-      const stops = clean.map((item, index) => {
+      const stops = clean.map(item => {
         const start = (cumulative / total) * 360;
         cumulative += Number(item.value);
         const end = (cumulative / total) * 360;
-        const opacity = Math.max(20, 92 - index * 16);
-        return `color-mix(in srgb, var(--accent) ${opacity}%, transparent) ${start.toFixed(1)}deg ${end.toFixed(1)}deg`;
+        const color = colorForId(item.label, projectPalette);
+        return `${color} ${start.toFixed(1)}deg ${end.toFixed(1)}deg`;
       }).join(", ");
       return `
         <div class="donut-wrap">
@@ -5295,9 +5310,9 @@
             <div class="donut-hole"><strong>${clean.length ? total : 0}</strong><span>total</span></div>
           </div>
           <div class="donut-legend">
-            ${clean.map((item, index) => `
+            ${clean.map(item => `
               <div class="donut-legend-row">
-                <span class="donut-dot" style="opacity:${Math.max(0.2, 0.92 - index * 0.16)}"></span>
+                <span class="donut-dot" style="--dot-color:${colorForId(item.label, projectPalette)}"></span>
                 <span>${escapeHtml(item.label)}</span>
                 <strong>${item.value}</strong>
               </div>
