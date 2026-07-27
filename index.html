@@ -1102,6 +1102,12 @@
       border-color: color-mix(in srgb, var(--success) 28%, var(--line));
     }
 
+    .chip.info {
+      color: var(--info);
+      background: color-mix(in srgb, var(--info) 12%, transparent);
+      border-color: color-mix(in srgb, var(--info) 28%, var(--line));
+    }
+
     .progress {
       height: 8px;
       overflow: hidden;
@@ -5223,7 +5229,7 @@
     }
 
     function statusChip(status) {
-      const tone = status === "Concluído" || status === "Finalizado" || status === "Pago" || status === "Ativo" ? "success" : status === "Cancelado" || status === "Atrasado" || status === "Inativo" ? "danger" : status === "Urgente" ? "danger" : status === "Pendente" ? "gold" : "accent";
+      const tone = status === "Concluído" || status === "Finalizado" || status === "Pago" || status === "Ativo" || status === "Ganho" ? "success" : status === "Cancelado" || status === "Atrasado" || status === "Inativo" || status === "Perdido" ? "danger" : status === "Urgente" ? "danger" : status === "Pendente" ? "gold" : status === "Reunião marcada" ? "info" : "";
       return `<span class="chip ${tone}">${escapeHtml(status || "Sem status")}</span>`;
     }
 
