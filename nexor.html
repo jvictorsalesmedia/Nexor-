@@ -2622,6 +2622,7 @@
         <button id="signupRequestBtn" class="btn" type="button" data-icon="plus">Solicitar acesso</button>
       </div>
       <button id="forgotPasswordBtn" class="btn" type="button" style="margin-top:8px;width:100%">Esqueci minha senha</button>
+      <button id="resumePaymentBtn" class="btn" type="button" style="margin-top:8px;width:100%">Já enviei meu pré-cadastro, retomar pagamento</button>
       <div id="authError" class="auth-error" role="alert"></div>
     </form>
 
@@ -3542,6 +3543,7 @@
       $("#setPasswordForm").addEventListener("submit", acceptInviteAndSetPassword);
       $("#signupRequestBtn")?.addEventListener("click", openSignupRequestModal);
       $("#forgotPasswordBtn")?.addEventListener("click", handleForgotPassword);
+      $("#resumePaymentBtn")?.addEventListener("click", openResumePaymentModal);
 
       if (!pendingAuthHash && new URLSearchParams(location.search).get("signup") === "1") {
         history.replaceState(null, "", location.pathname);
@@ -3712,13 +3714,108 @@
         if (!subscriptionResponse.ok || !subscriptionResult.invoiceUrl) {
           throw new Error(subscriptionResult.error || "Pré-cadastro enviado, mas não foi possível gerar a cobrança. Entraremos em contato.");
         }
-        window.location.href = subscriptionResult.invoiceUrl;
+        showPaymentConfirmation(subscriptionResult.invoiceUrl);
         return;
       } catch (error) {
         toast(error.message || "Não foi possível enviar o pré-cadastro.", "error");
       } finally {
         submit.disabled = false;
         submit.textContent = "Enviar pré-cadastro";
+        applyIcons(form);
+      }
+    }
+
+    // Tela mostrada depois de gerar a cobrança (tanto no pré-cadastro novo
+    // quanto ao retomar um pendente) — não redireciona na hora, porque se a
+    // pessoa fechar essa aba sem pagar ela perde o link. Abre em nova aba e
+    // deixa o link visível/copiável aqui, além de já ter sido mandado por
+    // email (ver sendInvoiceEmail em api/create-subscription.js).
+    function showPaymentConfirmation(invoiceUrl) {
+      const modalRoot = $("#modalRoot");
+      modalRoot.innerHTML = `
+        <dialog>
+          <div class="modal">
+            <div class="modal-head">
+              <div>
+                <h2>Pré-cadastro recebido!</h2>
+                <p class="muted">Também enviamos esse link de pagamento para o seu e-mail — se algo der errado por aqui, ele fica salvo lá.</p>
+              </div>
+              <button class="btn icon" type="button" data-close-modal title="Fechar" data-icon="x"></button>
+            </div>
+            <div class="field wide">
+              <label>Link de pagamento</label>
+              <input type="text" readonly value="${escapeHtml(invoiceUrl)}" onclick="this.select()">
+            </div>
+            <div class="modal-actions">
+              <button class="btn" type="button" data-close-modal>Fechar</button>
+              <a class="btn accent" href="${escapeHtml(invoiceUrl)}" target="_blank" rel="noreferrer" data-icon="log-in">Ir para pagamento</a>
+            </div>
+          </div>
+        </dialog>
+      `;
+      applyIcons(modalRoot);
+      const dialog = $("dialog", modalRoot);
+      if (dialog.showModal) dialog.showModal();
+      $$("[data-close-modal]", modalRoot).forEach(button => button.addEventListener("click", closeModal));
+    }
+
+    function openResumePaymentModal() {
+      const modalRoot = $("#modalRoot");
+      modalRoot.innerHTML = `
+        <dialog>
+          <form class="modal" id="resumePaymentForm">
+            <div class="modal-head">
+              <div>
+                <h2>Retomar pagamento</h2>
+                <p class="muted">Informe o e-mail usado no pré-cadastro e reenviamos o link de pagamento.</p>
+              </div>
+              <button class="btn icon" type="button" data-close-modal title="Fechar" data-icon="x"></button>
+            </div>
+            <div class="form-grid">
+              ${field("E-mail do pré-cadastro", "email", "", "email", true)}
+            </div>
+            <div class="modal-actions">
+              <button class="btn" type="button" data-close-modal>Cancelar</button>
+              <button class="btn accent" type="submit" data-icon="check">Buscar pagamento</button>
+            </div>
+          </form>
+        </dialog>
+      `;
+      applyIcons(modalRoot);
+      const dialog = $("dialog", modalRoot);
+      if (dialog.showModal) dialog.showModal();
+      $$("[data-close-modal]", modalRoot).forEach(button => button.addEventListener("click", closeModal));
+      $("#resumePaymentForm").addEventListener("submit", submitResumePayment);
+    }
+
+    async function submitResumePayment(event) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const formData = new FormData(form);
+      const submit = form.querySelector("button[type='submit']");
+      const email = String(formData.get("email") || "").trim().toLowerCase();
+      if (!email) {
+        toast("Informe o e-mail do pré-cadastro.", "error");
+        return;
+      }
+      submit.disabled = true;
+      submit.textContent = "Buscando...";
+      try {
+        const response = await fetch("/api/create-subscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.invoiceUrl) {
+          throw new Error(result.error || "Não foi possível encontrar um pré-cadastro pendente para esse e-mail.");
+        }
+        showPaymentConfirmation(result.invoiceUrl);
+      } catch (error) {
+        toast(error.message || "Não foi possível retomar o pagamento.", "error");
+      } finally {
+        submit.disabled = false;
+        submit.textContent = "Buscar pagamento";
         applyIcons(form);
       }
     }
