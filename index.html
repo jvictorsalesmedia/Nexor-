@@ -1392,6 +1392,39 @@
       padding: 22px;
     }
 
+    .empty-cta {
+      display: grid;
+      gap: 12px;
+      place-items: center;
+      min-height: 190px;
+      text-align: center;
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+      padding: 22px;
+    }
+
+    .empty-cta-ico {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+      color: var(--accent);
+    }
+
+    .empty-cta-ico svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .empty-cta strong {
+      color: var(--text);
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
     .settings-grid {
       display: grid;
       grid-template-columns: minmax(0, 0.8fr) minmax(360px, 1.2fr);
@@ -4451,7 +4484,7 @@
                 </div>
               </article>
             `;
-          }).join("") || emptyBlock("Nenhum projeto cadastrado.")}
+          }).join("") || emptyBlock("Nenhum projeto por aqui ainda.", "Novo projeto", "project")}
         </div>
       `;
     }
@@ -4614,7 +4647,7 @@
               <section class="kanban-column" data-drop-lead="${stage}">
                 <div class="column-head"><h3>${stage}</h3><span class="chip">${leads.length}</span></div>
                 <div class="column-list">
-                  ${leads.map(leadCard).join("") || `<div class="empty">Sem leads</div>`}
+                  ${leads.map(leadCard).join("") || (stage === "Novo" ? emptyBlock("Nenhum lead por aqui ainda.", "Novo lead", "lead") : `<div class="empty">Sem leads</div>`)}
                 </div>
               </section>
             `;
@@ -4934,7 +4967,7 @@
                 </div>
               </article>
             `;
-          }).join("") || emptyBlock("Nenhum cliente cadastrado.")}
+          }).join("") || emptyBlock("Nenhum cliente por aqui ainda.", "Novo cliente", "client")}
         </div>
       `;
     }
@@ -4958,7 +4991,7 @@
                 ${canManage() ? `<button class="btn danger" type="button" data-delete="production" data-id="${item.id}" data-icon="trash">Excluir</button>` : ""}
               </div>
             </article>
-          `).join("") || emptyBlock("Nenhuma produção cadastrada.")}
+          `).join("") || emptyBlock("Nenhuma produção por aqui ainda.", "Nova produção", "production")}
         </div>
       `;
     }
@@ -5116,7 +5149,7 @@
                 </div>
               </article>
             `;
-          }).join("") || emptyBlock("Nenhum funcionário cadastrado.")}
+          }).join("") || emptyBlock("Nenhum funcionário por aqui ainda.", "Novo funcionário", "employee")}
         </div>
         ${isAdmin() ? `<section class="panel" style="margin-top:14px">${clientAdminShortcut()}</section>` : ""}
       `;
@@ -5459,8 +5492,17 @@
       return `<div class="empty">${text}</div>`;
     }
 
-    function emptyBlock(text) {
-      return `<div class="empty" style="grid-column:1/-1">${text}</div>`;
+    function emptyBlock(text, ctaLabel, dataOpen) {
+      if (!ctaLabel || !dataOpen || !canManage()) {
+        return `<div class="empty" style="grid-column:1/-1">${text}</div>`;
+      }
+      return `
+        <div class="empty-cta" style="grid-column:1/-1">
+          <div class="empty-cta-ico">${icon("plus")}</div>
+          <strong>${text}</strong>
+          <button class="btn accent" type="button" data-open="${dataOpen}">${ctaLabel}</button>
+        </div>
+      `;
     }
 
     function barRow(label, value, max, display) {
