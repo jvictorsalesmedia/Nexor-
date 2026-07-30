@@ -6834,7 +6834,7 @@
         return;
       }
       if (cloudEnabled()) {
-        const shouldResetCloud = confirm("Não há senha inicial salva para este login no Supabase. Deseja definir uma nova senha agora para poder visualizar depois?");
+        const shouldResetCloud = confirm("Por segurança, senhas de contas na nuvem não ficam salvas em texto simples — não é possível visualizar a atual. Deseja definir uma nova senha agora? Você vai precisar anotá-la e repassar para a pessoa, pois não dá para ver de novo depois.");
         if (shouldResetCloud) changeUserPassword(id);
         return;
       }
