@@ -5104,7 +5104,7 @@
             return `
               <article class="item-card">
                 <div class="card-head">
-                  <div><strong>${escapeHtml(employee.name)}</strong><div class="meta">${escapeHtml(employee.roleName || "Função não informada")}</div></div>
+                  <div><strong><span class="sq" style="--dot-color:${colorForId(employee.id, projectPalette)}"></span> ${escapeHtml(employee.name)}</strong><div class="meta">${escapeHtml(employee.roleName || "Função não informada")}</div></div>
                   <span class="chip accent">${money(finalSalary)}</span>
                 </div>
                 <div class="meta"><span>Salário: ${money(employee.salary)}</span><span>Vales: ${money(employee.advance)}</span><span>Faltas: ${employee.absenceCount || 0}</span></div>
@@ -5403,7 +5403,7 @@
         <article class="item-card draggable" draggable="true" data-lead-card="${lead.id}">
           <div class="card-head">
             <div>
-              <strong>${escapeHtml(lead.name || lead.business || "Lead sem nome")}</strong>
+              <strong><span class="sq" style="--dot-color:${colorForId(lead.id, projectPalette)}"></span> ${escapeHtml(lead.name || lead.business || "Lead sem nome")}</strong>
               <div class="meta">${escapeHtml(lead.contact || "Sem responsavel")} • ${escapeHtml(lead.source || "Origem nao informada")}</div>
             </div>
             ${statusChip(lead.stage || "Novo")}
