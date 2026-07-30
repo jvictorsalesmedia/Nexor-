@@ -2505,6 +2505,10 @@
       }
     }
 
+    .nav-toggle-btn {
+      display: none;
+    }
+
     @media (max-width: 860px) {
       .shell {
         grid-template-columns: 1fr;
@@ -2516,8 +2520,41 @@
         max-height: none;
       }
 
+      .nav-toggle-btn {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        gap: 8px;
+        min-height: 40px;
+        padding: 0 12px;
+        margin-bottom: 10px;
+        border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--accent) 10%, transparent);
+        color: var(--accent);
+        font-size: 0.78rem;
+        font-weight: 760;
+        cursor: pointer;
+      }
+
+      .nav-toggle-btn svg {
+        width: 16px;
+        height: 16px;
+        transition: transform 150ms ease;
+      }
+
+      .sidebar.nav-open .nav-toggle-btn svg {
+        transform: rotate(180deg);
+      }
+
       .nav {
+        display: none;
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .sidebar.nav-open .nav {
+        display: grid;
       }
 
       .content {
@@ -2653,6 +2690,10 @@
           <span>Centro de gestão</span>
         </div>
       </div>
+      <button id="navToggleBtn" type="button" class="nav-toggle-btn">
+        <span>Módulos</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+      </button>
       <nav id="nav" class="nav"></nav>
       <div class="sidebar-footer">
         <div id="userPill" class="user-pill"></div>
@@ -3544,6 +3585,7 @@
       $("#signupRequestBtn")?.addEventListener("click", openSignupRequestModal);
       $("#forgotPasswordBtn")?.addEventListener("click", handleForgotPassword);
       $("#resumePaymentBtn")?.addEventListener("click", openResumePaymentModal);
+      $("#navToggleBtn")?.addEventListener("click", () => $(".sidebar")?.classList.toggle("nav-open"));
 
       if (!pendingAuthHash && new URLSearchParams(location.search).get("signup") === "1") {
         history.replaceState(null, "", location.pathname);
@@ -4089,6 +4131,7 @@
         activeModule = button.dataset.module;
         $("#globalSearch").value = "";
         $("#searchResults").classList.add("hidden");
+        $(".sidebar")?.classList.remove("nav-open");
         renderApp();
       }));
     }
@@ -5572,6 +5615,7 @@
         activeModule = button.dataset.module;
         $("#globalSearch").value = "";
         $("#searchResults").classList.add("hidden");
+        $(".sidebar")?.classList.remove("nav-open");
         renderApp();
       }));
       $$("[data-upsell]").forEach(button => button.addEventListener("click", () => showModuleUpsell(button.dataset.upsell)));
